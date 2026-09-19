@@ -1,27 +1,34 @@
 name: CI
-
 on:
   push:
   pull_request:
-
+  workflow_dispatch:
 permissions:
   contents: read
-
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
-  rust:
-    name: Rust
+  contracts:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-      - run: cargo fmt --all -- --check
-      - run: cargo test --workspace
+      - run: cargo generate-lockfile
+      - run: cargo fmt --all
+      - run: cargo test --workspace && cargo build -p noxctl
+      - run: python3 -m unittest discover -s tests/cli -v
       - run: cargo clippy --workspace --all-targets -- -D warnings
-
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-reviewed-sources
+          path: |
+            Cargo.lock
+            crates/
   nix:
-    name: Nix
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,6 +36,41 @@ jobs:
         with:
           extra_nix_config: |
             experimental-features = nix-command flakes
-      - run: nix develop --command bash -lc 'nix fmt .'
-      - run: git diff --exit-code -- . ':!flake.lock'
-      - run: nix flake check
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo generate-lockfile && nix flake lock
+      - run: git add Cargo.lock flake.lock
+      - run: nix fmt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nix-reviewed-sources
+          path: |
+            flake.lock
+            flake.nix
+            nix/
+            tests/nix/
+      - run: nix flake check --no-update-lock-file --show-trace
+  images:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [iso, qcow2, wsl, oci]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo generate-lockfile && nix flake lock && git add Cargo.lock flake.lock
+      - run: nix build --no-update-lock-file .#${{ matrix.target }}
+      - if: matrix.target == 'oci'
+        run: |
+          docker load --input result
+          docker run --rm nox-workspace:dev /bin/bash -lc 'noxctl --help && git --version'
+      - run: |
+          mkdir artifacts
+          cp -rL result artifacts/result
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nox-${{ matrix.target }}-x86_64-linux
+          path: artifacts/

@@ -1,3 +1,5 @@
+mod lifecycle;
+
 use std::{
     error::Error,
     fs,
@@ -25,13 +27,17 @@ enum CommandKind {
     Plan(PathArgs),
     /// Check host prerequisites and repository shape.
     Doctor,
-    /// Placeholder for the Nix build integration.
-    Build(PathArgs),
-    /// Placeholder for target image generation.
+    /// Build the machine artifact without activating it.
+    Build(BuildArgs),
+    /// Resolve and write the machine project lock file.
+    Lock(PathArgs),
+    /// Plan or explicitly execute a destructive SSH installation.
+    Install(InstallArgs),
+    /// Build the selected target image (WSL produces its tarball builder).
     Image(ImageArgs),
     /// Placeholder for safe activation.
     Apply(PathArgs),
-    /// Placeholder for generation inspection.
+    /// List local NixOS system generations.
     Generations,
     /// Placeholder for rollback.
     Rollback,
@@ -45,7 +51,36 @@ struct PathArgs {
 }
 
 #[derive(Debug, Args)]
+struct BuildArgs {
+    #[arg(short, long, default_value = "nox.toml")]
+    config: PathBuf,
+    #[arg(long)]
+    dry_run: bool,
+    #[arg(long, default_value = "result")]
+    out_link: PathBuf,
+}
+
+#[derive(Debug, Args)]
+struct InstallArgs {
+    #[arg(short, long, default_value = "nox.toml")]
+    config: PathBuf,
+    #[arg(long)]
+    host: String,
+    #[arg(long)]
+    execute: bool,
+    #[arg(long)]
+    confirm_host: Option<String>,
+    #[arg(long)]
+    confirm_disk: Option<String>,
+}
+
+#[derive(Debug, Args)]
 struct InitArgs {
+    /// Nox flake source. Use path:/absolute/checkout when developing.
+    #[arg(long, default_value = "github:swarnimarun/nox")]
+    source: String,
+    #[arg(long, default_value = "x86_64-linux")]
+    system: String,
     /// Directory in which nox.toml should be created.
     #[arg(default_value = ".")]
     directory: PathBuf,
@@ -63,7 +98,7 @@ struct ImageArgs {
 
 #[derive(Debug, Subcommand)]
 enum ImageCommand {
-    Build(PathArgs),
+    Build(BuildArgs),
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -97,19 +132,24 @@ fn run() -> Result<(), Box<dyn Error>> {
         CommandKind::Validate(args) => validate(&args.config),
         CommandKind::Plan(args) => plan(&args.config),
         CommandKind::Doctor => doctor(),
-        CommandKind::Build(args) => future_command("build", &args.config),
+        CommandKind::Build(args) => lifecycle::build(&args.config, args.dry_run, &args.out_link),
+        CommandKind::Lock(args) => lifecycle::lock(&args.config),
+        CommandKind::Install(args) => lifecycle::install(&args.config, &args.host, args.confirm_host.as_deref(), args.confirm_disk.as_deref(), args.execute),
         CommandKind::Image(ImageArgs { command: ImageCommand::Build(args) }) => {
-            future_command("image build", &args.config)
+            lifecycle::build(&args.config, args.dry_run, &args.out_link)
         }
         CommandKind::Apply(args) => future_command("apply", &args.config),
-        CommandKind::Generations => future_command("generations", Path::new(".")),
+        CommandKind::Generations => lifecycle::generations(),
         CommandKind::Rollback => future_command("rollback", Path::new(".")),
     }
 }
 
 fn init(args: InitArgs) -> Result<(), Box<dyn Error>> {
+    let flake = lifecycle::machine_flake(&args.source, &args.system)?;
     let directory = args.directory;
-    fs::create_dir_all(&directory)?;
+    if directory.exists() && fs::read_dir(&directory)?.next().is_some() {
+        return Err("init requires an empty directory; existing files will not be overwritten".into());
+    }
     let path = directory.join("nox.toml");
     if path.exists() {
         return Err(format!("{} already exists; refusing to overwrite", path.display()).into());
@@ -132,7 +172,11 @@ fn init(args: InitArgs) -> Result<(), Box<dyn Error>> {
         .filter(|name| !name.is_empty())
         .unwrap_or("nox-machine")
         .to_owned();
-    fs::write(&path, toml::to_string_pretty(&config)?)?;
+    config.validate().map_err(|errors| errors.join("\n"))?;
+    fs::create_dir_all(&directory)?;
+    lifecycle::write_new(&path, &toml::to_string_pretty(&config)?)?;
+    lifecycle::write_new(&directory.join("flake.nix"), &flake)?;
+    println!("Next: noxctl lock --config {}", path.display());
     println!("created {}", path.display());
     Ok(())
 }
@@ -156,7 +200,7 @@ fn doctor() -> Result<(), Box<dyn Error>> {
             println!("ok: {}", String::from_utf8_lossy(&output.stdout).trim())
         }
         Ok(_) => println!("warning: nix is installed but did not report a version"),
-        Err(_) => println!("warning: nix was not found; enter `nix develop` before building"),
+        Err(_) => println!("warning: nix was not found; install Nix with flakes support before building"),
     }
     if Path::new("flake.nix").exists() {
         println!("ok: flake.nix found");
@@ -193,3 +237,4 @@ impl From<TargetName> for Target {
         }
     }
 }
+

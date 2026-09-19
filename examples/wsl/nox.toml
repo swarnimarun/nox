@@ -1,0 +1,9 @@
+schema_version = 1
+name = "nox-wsl"
+profile = "workspace"
+target = "wsl"
+capabilities = ["development"]
+
+[nix]
+channel = "nixos-26.05"
+extra_modules = []

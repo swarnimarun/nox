@@ -115,6 +115,7 @@ pub enum Capability {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct NixSettings {
     #[serde(default = "default_nixpkgs_channel")]
     pub channel: String,
@@ -133,6 +134,7 @@ fn default_nixpkgs_channel() -> String {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct NoxConfig {
     pub schema_version: u32,
     pub name: String,
@@ -156,8 +158,26 @@ impl NoxConfig {
         if self.name.trim().is_empty() {
             errors.push("name must not be empty".to_owned());
         }
-        if self.name.len() > 64 {
-            errors.push("name must be 64 characters or fewer".to_owned());
+        if self.name.len() > 63
+            || !self.name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+            || self.name.starts_with('-')
+            || self.name.ends_with('-')
+        {
+            errors.push("name must be a hostname: 1-63 ASCII letters/digits/hyphens, no edge hyphens".to_owned());
+        }
+        if self.nix.channel != "nixos-26.05" {
+            errors.push("only nixos-26.05 is supported; the flake lock selects its revision".to_owned());
+        }
+        for module in &self.nix.extra_modules {
+            let path = Path::new(module);
+            if module.is_empty() || path.is_absolute() || !module.ends_with(".nix")
+                || path.components().any(|c| !matches!(c, std::path::Component::Normal(_)))
+            {
+                errors.push(format!("extra module must be a relative .nix path inside the machine directory: {module}"));
+            }
+        }
+        if self.target == Target::Oci && self.profile != Profile::Workspace {
+            errors.push("oci target requires the workspace profile".to_owned());
         }
         if self.profile == Profile::Gaming && !self.capabilities.contains(&Capability::Gaming) {
             errors.push("gaming profile requires the gaming capability".to_owned());
@@ -231,6 +251,29 @@ mod tests {
     }
 
     #[test]
+    fn rejects_invalid_hostname_and_unknown_fields() {
+        for name in ["bad name", "-bad", "bad-", "a.b", "$(id)", ""] {
+            let mut c = example_config();
+            c.name = name.to_owned();
+            assert!(c.validate().is_err(), "{name}");
+        }
+        let text = format!("unexpected = true\n{}", toml::to_string(&example_config()).unwrap());
+        assert!(parse(&text).is_err());
+    }
+
+    #[test]
+    fn rejects_module_escape_and_unsupported_channel() {
+        for module in ["../secret.nix", "/tmp/a.nix", "", "a.txt"] {
+            let mut c = example_config();
+            c.nix.extra_modules.push(module.to_owned());
+            assert!(c.validate().is_err());
+        }
+        let mut c = example_config();
+        c.nix.channel = "unstable".to_owned();
+        assert!(c.validate().is_err());
+    }
+
+    #[test]
     fn rejects_incompatible_target() {
         let config = NoxConfig {
             schema_version: CURRENT_SCHEMA_VERSION,
@@ -243,3 +286,4 @@ mod tests {
         assert!(config.validate().is_err());
     }
 }
+
