@@ -29,6 +29,5 @@ jobs:
         with:
           extra_nix_config: |
             experimental-features = nix-command flakes
-      - run: nix fmt -- --check
+      - run: nix develop --command bash -lc 'nixfmt --check flake.nix $(find nix tests -name "*.nix")'
       - run: nix flake check
-

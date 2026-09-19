@@ -7,7 +7,7 @@ Run these from the repository root:
 ```sh
 cargo fmt --all -- --check
 cargo test --workspace
-nix fmt -- --check
+nix develop --command bash -lc 'nixfmt --check flake.nix $(find nix tests -name "*.nix")'
 nix flake check
 ```
 
@@ -30,4 +30,3 @@ storage adapters.
 - remote activation rolls back after health-check timeout;
 - SSH/firewall/network changes are covered by a reachable test machine;
 - secrets never appear in plans, logs, or generated artifacts.
-
