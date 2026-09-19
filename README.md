@@ -1,68 +1,44 @@
 # Nox
 
-Nox is a NixOS-based Linux platform for machines that need a reproducible
-system, a useful CLI, and composable profiles for servers, desktops, gaming,
-workspaces, and recovery environments.
+A NixOS-based platform with a Rust CLI and one declarative machine model:
+profiles describe purpose, capabilities compose features, and targets select
+metal, ISO, qcow2, WSL, or OCI userspace outputs.
 
-The project is intentionally one platform, not five distributions:
+## Implemented contracts
 
-- **Profiles** describe purpose: `server`, `desktop`, `gaming`, `workspace`,
-  and `recovery`.
-- **Capabilities** describe composition: storage, shares, apps,
-  virtualization, development, and remote management.
-- **Targets** describe where the result runs: metal, ISO, qcow2, WSL, or OCI.
+- `noxctl init`, `validate`, `plan`, `doctor`, `lock`, `build`, `image build`,
+  guarded SSH `install`, and local `generations`.
+- TOML-to-NixOS composition, five profiles and capability modules.
+- ISO and EFI qcow2 derivations, upstream WSL tarball builder, OCI workspace.
+- Disko/nixos-anywhere integration with explicit host/disk confirmation.
+- Rust and CLI process-boundary tests, Nix target evaluation and server VM test.
 
-That separation is the foundation for building a Proxmox/TrueNAS-like server
-experience, a Nix-friendly desktop, WSL support, and isolated workspaces
-without maintaining unrelated operating systems.
+These are implementation contracts, not certification that every target has
+booted. WSL/metal/desktop runtime verification is still required. `apply` and
+`rollback` remain reserved until their recovery contracts pass tests. The
+runtime daemon, web UI and marketplace remain deferred by repository policy.
 
-## Current milestone
-
-This repository is the first working contract, not a finished operating
-system. It currently provides:
-
-- a versioned TOML machine schema in `nox-config`;
-- a pure planning layer in `nox-core`;
-- a small Rust CLI named `noxctl` with `init`, `validate`, `plan`, and `doctor`;
-- starter NixOS profiles and target modules;
-- a Nix development shell and flake evaluation check;
-- architecture, state-ownership, testing, and contribution documentation.
-
-`build`, `image build`, `apply`, `generations`, and `rollback` are reserved
-commands. They fail explicitly until the corresponding safety contracts are
-implemented; they do not pretend to mutate a host.
-
-## Quick start
-
-With Nix installed:
+## Start testing
 
 ```sh
-nix develop
-cargo test --workspace
-cargo run -p noxctl -- init examples/atlas
-cargo run -p noxctl -- validate examples/atlas/nox.toml
-cargo run -p noxctl -- plan examples/atlas/nox.toml
-nix flake check
+bash scripts/bootstrap.sh
+./result/bin/noxctl --help
+nix build --no-update-lock-file .#qcow2 --out-link result-vm
 ```
 
-The first `nix flake check` will create or refresh `flake.lock` when run by a
-developer with permission to update the working tree. Commit that lock file
-once the project chooses its first supported nixpkgs revision.
+Bootstrap generates missing Cargo/Nix locks; review and commit them. See
+[getting started](docs/user/getting-started.md) for exact VM, WSL, container and
+metal installation steps, including test credentials and destructive boundaries.
 
-## Design rules
+The repository is private; use an authenticated GitHub checkout or local
+`path:` flake reference. OCI is a userspace workspace sharing the host kernel;
+use qcow2 to test a complete bootable NixOS system.
 
-1. Nix owns desired system state; a future `noxd` owns observed runtime state.
-2. `noxctl` may edit TOML but must never rewrite user-owned Nix.
-3. Nox delegates package management, filesystems, VMs, containers, secrets,
-   and backups to mature upstream projects.
-4. Remote changes must evaluate, build, show a plan, activate temporarily,
-   health-check, and only then become permanent.
-5. Every new feature needs a testable contract before an integration.
+## Plan and evidence
 
-See [PLAN.md](PLAN.md) for scope and sequencing, and [AGENTS.md](AGENTS.md)
-for repository-specific development guidance.
+[Implementation plan](docs/operations/implementation-plan.md) maps every
+component to its acceptance gate and sequences the remaining lifecycle work.
+[Testing guide](docs/operations/testing.md) distinguishes evaluation, artifact
+build, and runtime evidence. [PLAN.md](PLAN.md) retains the product architecture.
 
-## License
-
-Nox is distributed under the Apache License 2.0. See [LICENSE](LICENSE).
-
+Apache-2.0; see [LICENSE](LICENSE).

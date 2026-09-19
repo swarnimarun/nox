@@ -20,3 +20,8 @@ result-*
 .idea/
 .vscode/
 *.swp
+
+
+__pycache__/
+*.pyc
+*.wsl
