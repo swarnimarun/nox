@@ -1,0 +1,12 @@
+# Human-editable desired state. `noxctl` may update this file; it never
+# rewrites arbitrary Nix expressions.
+schema_version = 1
+name = "atlas"
+profile = "server"
+target = "metal"
+capabilities = ["apps", "remote-management"]
+
+[nix]
+channel = "nixos-26.05"
+extra_modules = []
+

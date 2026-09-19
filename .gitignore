@@ -1,0 +1,22 @@
+# Rust
+/target/
+# Nix
+/.direnv/
+/.devenv/
+result
+result-*
+
+# Local configuration and generated artifacts
+.env
+.env.*
+!.env.example
+*.qcow2
+*.iso
+*.raw
+*.ova
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
+*.swp
