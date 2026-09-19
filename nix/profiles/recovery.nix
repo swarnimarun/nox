@@ -4,7 +4,10 @@
   imports = [ ../modules/core ];
 
   nox.profile = "recovery";
-  nox.capabilities = [ "recovery" "remote-management" ];
+  nox.capabilities = [
+    "recovery"
+    "remote-management"
+  ];
 
   environment.systemPackages = with pkgs; [
     cryptsetup
@@ -13,4 +16,3 @@
   ];
   services.openssh.enable = true;
 }
-

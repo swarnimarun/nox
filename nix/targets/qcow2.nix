@@ -3,4 +3,3 @@
 {
   nox.target = "qcow2";
 }
-

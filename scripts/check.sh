@@ -29,7 +29,8 @@ else
 fi
 
 if command -v nix >/dev/null 2>&1; then
-  nix develop --command bash -lc 'nixfmt --check flake.nix $(find nix tests -name "*.nix")'
+  nix develop --command bash -lc 'nix fmt .'
+  git diff --exit-code -- . ':!flake.lock'
   nix flake check
 else
   echo "skip: nix is not installed"

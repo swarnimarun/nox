@@ -7,7 +7,8 @@ Run these from the repository root:
 ```sh
 cargo fmt --all -- --check
 cargo test --workspace
-nix develop --command bash -lc 'nixfmt --check flake.nix $(find nix tests -name "*.nix")'
+nix develop --command bash -lc 'nix fmt .'
+git diff --exit-code -- . ':!flake.lock'
 nix flake check
 ```
 

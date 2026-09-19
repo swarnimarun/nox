@@ -3,4 +3,3 @@
 {
   nox.target = "metal";
 }
-

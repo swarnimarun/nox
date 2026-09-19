@@ -3,13 +3,25 @@
 {
   options.nox = {
     profile = lib.mkOption {
-      type = lib.types.enum [ "server" "desktop" "gaming" "workspace" "recovery" ];
+      type = lib.types.enum [
+        "server"
+        "desktop"
+        "gaming"
+        "workspace"
+        "recovery"
+      ];
       default = "server";
       description = "The user-facing purpose preset for this machine.";
     };
 
     target = lib.mkOption {
-      type = lib.types.enum [ "metal" "iso" "qcow2" "wsl" "oci" ];
+      type = lib.types.enum [
+        "metal"
+        "iso"
+        "qcow2"
+        "wsl"
+        "oci"
+      ];
       default = "metal";
       description = "The runtime or artifact target for this machine.";
     };
@@ -27,4 +39,3 @@
     system.stateVersion = lib.mkDefault "26.05";
   };
 }
-

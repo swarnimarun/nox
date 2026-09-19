@@ -3,19 +3,26 @@
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
 
-  outputs = { self, nixpkgs }:
+  outputs =
+    { self, nixpkgs }:
     let
-      systems = [ "x86_64-linux" "aarch64-linux" ];
+      systems = [
+        "x86_64-linux"
+        "aarch64-linux"
+      ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
 
-      profileSystem = system: profile: nixpkgs.lib.nixosSystem {
-        inherit system;
-        modules = [
-          ./nix/profiles/${profile}.nix
-          ./nix/targets/metal.nix
-        ];
-      };
-    in {
+      profileSystem =
+        system: profile:
+        nixpkgs.lib.nixosSystem {
+          inherit system;
+          modules = [
+            ./nix/profiles/${profile}.nix
+            ./nix/targets/metal.nix
+          ];
+        };
+    in
+    {
       devShells = forAllSystems (system: {
         default = nixpkgs.legacyPackages.${system}.mkShell {
           packages = with nixpkgs.legacyPackages.${system}; [
@@ -32,8 +39,7 @@
         };
       });
 
-      formatter = forAllSystems (system:
-        nixpkgs.legacyPackages.${system}.nixfmt-rfc-style);
+      formatter = forAllSystems (system: nixpkgs.legacyPackages.${system}.nixfmt-rfc-style);
 
       nixosConfigurations = {
         example-server = profileSystem "x86_64-linux" "server";
@@ -41,17 +47,20 @@
         example-recovery = profileSystem "x86_64-linux" "recovery";
       };
 
-      checks = forAllSystems (system:
+      checks = forAllSystems (
+        system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
           # Force evaluation of the module graph without building an image.
           evaluated = profileSystem system "server";
-        in {
-          nixos-module-evaluation = pkgs.runCommand "nox-nixos-module-evaluation" { }
-            (builtins.deepSeq evaluated.config.system.stateVersion ''
+        in
+        {
+          nixos-module-evaluation = pkgs.runCommand "nox-nixos-module-evaluation" { } (
+            builtins.deepSeq evaluated.config.system.stateVersion ''
               printf '%s\n' "NixOS module evaluation succeeded" > $out
-            '');
-        });
+            ''
+          );
+        }
+      );
     };
 }
-

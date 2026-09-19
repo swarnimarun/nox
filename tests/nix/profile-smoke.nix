@@ -1,7 +1,10 @@
 { config, ... }:
 
 {
-  imports = [ ../../nix/profiles/server.nix ../../nix/targets/metal.nix ];
+  imports = [
+    ../../nix/profiles/server.nix
+    ../../nix/targets/metal.nix
+  ];
   system.stateVersion = "26.05";
   assertions = [
     {
