@@ -2,8 +2,14 @@
 {
   name = "nox-server-boot";
   nodes.machine = { ... }: {
-    imports = [ ../../nix/profiles/server.nix ../../nix/capabilities ];
-    nox.capabilities = [ "development" "apps" ];
+    imports = [
+      ../../nix/profiles/server.nix
+      ../../nix/capabilities
+    ];
+    nox.capabilities = [
+      "development"
+      "apps"
+    ];
   };
   testScript = ''
     machine.start()

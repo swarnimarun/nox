@@ -64,12 +64,21 @@ pub fn install(config: &Path, host: &str, confirm_host: Option<&str>, confirm_di
     require_lock(&root)?;
     let flake = reference(&root);
     println!("DESTRUCTIVE: nixos-anywhere will replace the selected destination's operating system and format its declared disks. Destination: {host}");
-    let args = vec!["run".into(), "--no-update-lock-file".into(), format!("{flake}#installer"), "--".into(),
+    let mut args = vec!["run".into(), "--no-update-lock-file".into(), format!("{flake}#installer"), "--".into(),
         "--flake".into(), format!("{flake}#nox"), "--target-host".into(), host.into()];
     if !execute { return invoke("nix", &args, false); }
     if confirm_host != Some(host) { return Err("--confirm-host must exactly match --host".into()); }
     let disk = confirm_disk.ok_or("--confirm-disk must match the single Disko disk device")?;
     if !disk.starts_with("/dev/") || disk.contains("REPLACE") { return Err("invalid confirmation disk".into()); }
+    // Freeze the project and all flake inputs before checking disks or installing.
+    let archived = Command::new("nix").args(["flake", "archive", "--json", "--no-update-lock-file", &flake]).output()?;
+    if !archived.status.success() { return Err("could not snapshot the locked machine flake".into()); }
+    let archived: serde_json::Value = serde_json::from_slice(&archived.stdout)?;
+    let snapshot = archived.get("path").and_then(|p| p.as_str()).ok_or("archive returned no store path")?;
+    if !snapshot.starts_with("/nix/store/") { return Err("archive path is outside the Nix store".into()); }
+    let flake = format!("path:{snapshot}");
+    args[2] = format!("{flake}#installer");
+    args[5] = format!("{flake}#nox");
     let output = Command::new("nix").args(["eval", "--no-update-lock-file", "--json", &format!("{flake}#nixosConfigurations.nox.config.disko.devices.disk")]).output()?;
     if !output.status.success() { return Err(format!("disk evaluation failed: {}", String::from_utf8_lossy(&output.stderr)).into()); }
     let disks: serde_json::Value = serde_json::from_slice(&output.stdout)?;

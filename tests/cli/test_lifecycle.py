@@ -21,6 +21,7 @@ class Lifecycle(unittest.TestCase):
         fake.write_text('''#!/usr/bin/env python3
 import json, os, sys
 with open(os.environ['CALL_LOG'], 'a') as f: f.write(json.dumps(sys.argv[1:]) + '\\n')
+if sys.argv[1:3] == ['flake', 'archive']: print('{\"path\":\"/nix/store/frozen-nox\"}')
 if sys.argv[1] == 'eval': print(os.environ.get('DISKS', '{"main":{"device":"/dev/test"}}'))
 if sys.argv[1] == os.environ.get('FAIL_COMMAND'): sys.exit(23)
 ''')
@@ -93,24 +94,25 @@ if sys.argv[1] == os.environ.get('FAIL_COMMAND'): sys.exit(23)
         config = self.init()
         self.env['DISKS'] = '{"main":{"device":"/dev/other"}}'
         self.execute(config, False)
-        self.assertEqual([x[0] for x in self.calls()], ['eval'])
+        self.assertEqual([x[0] for x in self.calls()], ['flake', 'eval'])
 
     def test_install_rejects_multiple_disks(self):
         config = self.init()
         self.env['DISKS'] = '{"a":{"device":"/dev/test"},"b":{"device":"/dev/other"}}'
         self.execute(config, False)
-        self.assertEqual([x[0] for x in self.calls()], ['eval'])
+        self.assertEqual([x[0] for x in self.calls()], ['flake', 'eval'])
 
     def test_failed_build_never_runs_installer(self):
         config = self.init()
         self.env['FAIL_COMMAND'] = 'build'
         self.execute(config, False)
-        self.assertEqual([x[0] for x in self.calls()], ['eval', 'build'])
+        self.assertEqual([x[0] for x in self.calls()], ['flake', 'eval', 'build'])
 
     def test_install_evaluates_then_builds_then_runs(self):
         config = self.init()
         self.execute(config, True)
-        self.assertEqual([x[0] for x in self.calls()], ['eval', 'build', 'run'])
+        self.assertEqual([x[0] for x in self.calls()], ['flake', 'eval', 'build', 'run'])
+        self.assertIn('path:/nix/store/frozen-nox#nox', self.calls()[-1])
 
     def test_non_metal_never_installs(self):
         config = self.init('wsl', 'workspace')

@@ -74,7 +74,7 @@ boot must be recorded independently before claiming support.
 matching `--confirm-disk` are mandatory. Nox evaluates the Disko disk set,
 rejects multiple disks, builds the full system, and only then invokes the
 locked nixos-anywhere package. SSH host authentication remains upstream's
-responsibility. Configuration must remain unchanged during this operation.
+responsibility. Execution archives the locked machine flake into the immutable Nix store before checking disks and uses that same snapshot for the build and installer.
 The destination disk is erased; there is no automatic restoration of its old
 contents. The confirmation does not prove that an operator selected the correct
 physical disk: inspect its stable ID on the destination first.

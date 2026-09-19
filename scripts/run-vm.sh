@@ -6,6 +6,7 @@ if [[ $# != 2 ]]; then
   exit 2
 fi
 [[ -f "$1" && -f "$2" ]] || { echo 'Image and EFI firmware must be regular files.' >&2; exit 1; }
+[[ "$1" != *,* ]] || { echo "Image path must not contain commas." >&2; exit 1; }
 # snapshot=on leaves the source image unchanged; TCG also works without /dev/kvm.
 exec qemu-system-x86_64 -machine q35 -accel tcg -m 4096 -smp 2 \
   -bios "$2" -drive "file=$1,format=qcow2,if=virtio,snapshot=on" \

@@ -1,6 +1,6 @@
 //! Domain logic that is independent from CLI presentation and system effects.
 
-use nox_config::{Capability, NoxConfig};
+use nox_config::{Capability, NoxConfig, Target};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Plan {
@@ -37,7 +37,13 @@ pub fn plan(config: &NoxConfig) -> Plan {
         actions: vec![
             "evaluate the NixOS module graph".to_owned(),
             format!("prepare the {} target", config.target),
-            "show the resulting activation diff before applying changes".to_owned(),
+            match config.target {
+                Target::Metal => "build the system; installation requires explicit host/disk confirmation",
+                Target::Iso => "build installer media; boot and disk installation are separate operations",
+                Target::Qcow2 => "build an EFI qcow2 disk; test it in a disposable virtual machine",
+                Target::Wsl => "build the WSL tarball builder; packaging requires root before Windows import",
+                Target::Oci => "build an OCI userspace archive; this does not boot a kernel or systemd",
+            }.to_owned(),
         ],
     }
 }
@@ -68,6 +74,13 @@ mod tests {
     use nox_config::{example_config, Capability};
 
     #[test]
+    fn plan_explains_wsl_packaging() {
+        let mut config = example_config();
+        config.target = Target::Wsl;
+        assert!(plan(&config).render_text().contains("packaging requires root"));
+    }
+
+    #[test]
     fn plan_contains_sorted_capabilities() {
         let mut config = example_config();
         config.capabilities.insert(Capability::Storage);
@@ -75,3 +88,4 @@ mod tests {
         assert_eq!(result.capabilities, vec!["apps", "remote-management", "storage"]);
     }
 }
+

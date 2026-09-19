@@ -1,18 +1,50 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   root = pkgs.buildEnv {
     name = "nox-workspace-root";
-    paths = config.environment.systemPackages ++ (with pkgs; [ bashInteractive coreutils cacert nix shadow sudo util-linux procps findutils gnugrep gnused gnutar gzip which less ]);
-    pathsToLink = [ "/bin" "/etc" "/share" ];
+    paths =
+      config.environment.systemPackages
+      ++ (with pkgs; [
+        bashInteractive
+        coreutils
+        cacert
+        nix
+        shadow
+        sudo
+        util-linux
+        procps
+        findutils
+        gnugrep
+        gnused
+        gnutar
+        gzip
+        which
+        less
+      ]);
+    pathsToLink = [
+      "/bin"
+      "/etc"
+      "/share"
+    ];
     ignoreCollisions = true;
   };
-in {
+in
+{
   nox.target = "oci";
   boot.isContainer = true;
   system.build.noxOci = pkgs.dockerTools.buildLayeredImage {
     name = "nox-workspace";
     tag = "dev";
-    contents = [ root pkgs.dockerTools.usrBinEnv pkgs.dockerTools.binSh ];
+    contents = [
+      root
+      pkgs.dockerTools.usrBinEnv
+      pkgs.dockerTools.binSh
+    ];
     extraCommands = ''
       mkdir -p etc tmp root home nix/var/nix/profiles nix/var/nix/gcroots
       chmod 1777 tmp
@@ -31,9 +63,17 @@ in {
     '';
     config = {
       Cmd = [ "/bin/bash" ];
-      Env = [ "PATH=/bin" "USER=root" "HOME=/root" "SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt" "NIX_SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt" "NIX_REMOTE=local" ];
+      Env = [
+        "PATH=/bin"
+        "USER=root"
+        "HOME=/root"
+        "SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt"
+        "NIX_SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt"
+        "NIX_REMOTE=local"
+      ];
       WorkingDir = "/root";
-      Labels."org.opencontainers.image.description" = "Nox userspace workspace; host kernel, no NixOS systemd boot";
+      Labels."org.opencontainers.image.description" =
+        "Nox userspace workspace; host kernel, no NixOS systemd boot";
     };
   };
 }

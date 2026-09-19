@@ -127,8 +127,7 @@ noxctl install --config /tmp/nox-metal/nox.toml --host root@192.0.2.10 \
 ```
 
 The destination OS and disk contents are replaced. After reboot verify SSH,
-`findmnt /`, `noxctl --help`, and generation inspection. Do not change the
-configuration during installation. Keep the machine flake/locks under version
+`findmnt /`, `noxctl --help`, and generation inspection. Execution uses an immutable snapshot of the locked project. Keep the machine flake/locks under version
 control for subsequent management.
 
 `apply` and `rollback` still fail explicitly; their health-check and timed

@@ -163,14 +163,21 @@ impl NoxConfig {
             || self.name.starts_with('-')
             || self.name.ends_with('-')
         {
-            errors.push("name must be a hostname: 1-63 ASCII letters/digits/hyphens, no edge hyphens".to_owned());
+            errors.push(
+                "name must be a hostname: 1-63 ASCII letters/digits/hyphens, no edge hyphens"
+                    .to_owned(),
+            );
         }
         if self.nix.channel != "nixos-26.05" {
-            errors.push("only nixos-26.05 is supported; the flake lock selects its revision".to_owned());
+            errors.push(
+                "only nixos-26.05 is supported; the flake lock selects its revision".to_owned(),
+            );
         }
         for module in &self.nix.extra_modules {
             let path = Path::new(module);
-            if module.is_empty() || path.is_absolute() || !module.ends_with(".nix")
+            if module.is_empty()
+                || path.is_absolute()
+                || !module.ends_with(".nix")
                 || path.components().any(|c| !matches!(c, std::path::Component::Normal(_)))
             {
                 errors.push(format!("extra module must be a relative .nix path inside the machine directory: {module}"));
@@ -286,4 +293,3 @@ mod tests {
         assert!(config.validate().is_err());
     }
 }
-

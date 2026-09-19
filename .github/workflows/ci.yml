@@ -16,7 +16,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-      - run: cargo generate-lockfile && cargo fmt --all
+      - run: cargo fmt --all
       - run: cargo test --workspace --locked && cargo build -p noxctl --locked
       - run: python3 -m unittest discover -s tests/cli -v
       - run: cargo clippy --workspace --all-targets -- -D warnings
@@ -46,7 +46,6 @@ jobs:
           extra_nix_config: |
             experimental-features = nix-command flakes
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo generate-lockfile && nix flake lock && git add Cargo.lock flake.lock
       - run: nix fmt .
       - name: Export generated source for review
         if: always()

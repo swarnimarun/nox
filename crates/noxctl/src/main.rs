@@ -134,7 +134,13 @@ fn run() -> Result<(), Box<dyn Error>> {
         CommandKind::Doctor => doctor(),
         CommandKind::Build(args) => lifecycle::build(&args.config, args.dry_run, &args.out_link),
         CommandKind::Lock(args) => lifecycle::lock(&args.config),
-        CommandKind::Install(args) => lifecycle::install(&args.config, &args.host, args.confirm_host.as_deref(), args.confirm_disk.as_deref(), args.execute),
+        CommandKind::Install(args) => lifecycle::install(
+            &args.config,
+            &args.host,
+            args.confirm_host.as_deref(),
+            args.confirm_disk.as_deref(),
+            args.execute,
+        ),
         CommandKind::Image(ImageArgs { command: ImageCommand::Build(args) }) => {
             lifecycle::build(&args.config, args.dry_run, &args.out_link)
         }
@@ -148,7 +154,9 @@ fn init(args: InitArgs) -> Result<(), Box<dyn Error>> {
     let flake = lifecycle::machine_flake(&args.source, &args.system)?;
     let directory = args.directory;
     if directory.exists() && fs::read_dir(&directory)?.next().is_some() {
-        return Err("init requires an empty directory; existing files will not be overwritten".into());
+        return Err(
+            "init requires an empty directory; existing files will not be overwritten".into()
+        );
     }
     let path = directory.join("nox.toml");
     if path.exists() {
@@ -200,7 +208,9 @@ fn doctor() -> Result<(), Box<dyn Error>> {
             println!("ok: {}", String::from_utf8_lossy(&output.stdout).trim())
         }
         Ok(_) => println!("warning: nix is installed but did not report a version"),
-        Err(_) => println!("warning: nix was not found; install Nix with flakes support before building"),
+        Err(_) => {
+            println!("warning: nix was not found; install Nix with flakes support before building")
+        }
     }
     if Path::new("flake.nix").exists() {
         println!("ok: flake.nix found");
@@ -237,4 +247,3 @@ impl From<TargetName> for Target {
         }
     }
 }
-

@@ -1,6 +1,6 @@
-{ modulesPath, ... }:
+{ modulesPath, lib, ... }:
 {
   imports = [ (modulesPath + "/installer/cd-dvd/installation-cd-minimal.nix") ];
   nox.target = "iso";
-  isoImage.isoBaseName = "nox";
+  image.baseName = lib.mkForce "nox";
 }
