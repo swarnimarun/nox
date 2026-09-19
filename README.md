@@ -26,7 +26,7 @@ bash scripts/bootstrap.sh
 nix build --no-update-lock-file .#qcow2 --out-link result-vm
 ```
 
-Bootstrap generates missing Cargo/Nix locks; review and commit them. See
+Cargo and Nix dependencies are pinned in committed lockfiles. See
 [getting started](docs/user/getting-started.md) for exact VM, WSL, container and
 metal installation steps, including test credentials and destructive boundaries.
 

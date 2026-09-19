@@ -68,7 +68,7 @@ jobs:
             tests/nix/
       - run: nix flake check --no-update-lock-file --show-trace
   images:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-images]')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -79,6 +79,8 @@ jobs:
       - uses: cachix/install-nix-action@v31
       - uses: dtolnay/rust-toolchain@stable
       - run: nix build --no-update-lock-file .#${{ matrix.target }}
+      - if: matrix.target == 'qcow2'
+        run: nix run --no-update-lock-file .#vm-smoke -- --timeout 600
       - if: matrix.target == 'oci'
         run: |
           docker load --input result

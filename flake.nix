@@ -35,7 +35,7 @@
         system:
         nixpkgs.legacyPackages.${system}.rustPlatform.buildRustPackage {
           pname = "noxctl";
-          version = "0.2.0";
+          version = "0.1.0";
           src = nixpkgs.lib.cleanSource ./.;
           cargoLock.lockFile = ./Cargo.lock;
           cargoBuildFlags = [
@@ -55,6 +55,13 @@
         wsl = noxLib.artifact (machine system "wsl");
         oci = noxLib.artifact (machine system "container");
         installer = inputs.nixos-anywhere.packages.${system}.default;
+        vm-smoke = nixpkgs.legacyPackages.${system}.writeShellApplication {
+          name = "nox-vm-smoke";
+          runtimeInputs = with nixpkgs.legacyPackages.${system}; [ python3 qemu ];
+          text = ''
+            exec python3 ${./tests/boot_qcow2.py} ${self.packages.${system}.qcow2}/nixos.qcow2 ${nixpkgs.legacyPackages.${system}.OVMF.fd.firmware} "$@"
+          '';
+        };
       });
       apps = each (system: {
         default = {

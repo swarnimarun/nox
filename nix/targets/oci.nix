@@ -40,6 +40,7 @@ in
   system.build.noxOci = pkgs.dockerTools.buildLayeredImage {
     name = "nox-workspace";
     tag = "dev";
+    includeNixDB = true;
     contents = [
       root
       pkgs.dockerTools.usrBinEnv

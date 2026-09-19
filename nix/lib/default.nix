@@ -56,6 +56,7 @@ let
     assert lib.assertMsg (
       (c.nix.channel or "nixos-26.05") == "nixos-26.05"
     ) "Change the flake input and schema together to change channels";
+    assert lib.assertMsg (c.target != "oci" || lib.all (cap: builtins.elem cap [ "development" "storage" "shares" ]) caps) "OCI supports userspace capabilities only";
     c;
   mkSystem =
     {

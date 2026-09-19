@@ -44,6 +44,17 @@ if sys.argv[1] == os.environ.get('FAIL_COMMAND'): sys.exit(23)
     def calls(self):
         return [json.loads(line) for line in self.log.read_text().splitlines()] if self.log.exists() else []
 
+    def test_workspace_does_not_enable_system_services(self):
+        import tomllib
+        config = self.init('oci', 'workspace')
+        self.assertEqual(tomllib.loads(config.read_text())['capabilities'], ['development'])
+
+    def test_archive_failure_never_evaluates_or_installs(self):
+        config = self.init()
+        self.env['FAIL_COMMAND'] = 'flake'
+        self.execute(config, False)
+        self.assertEqual([x[0] for x in self.calls()], ['flake'])
+
     def test_init_never_overwrites(self):
         self.init()
         before = (self.project / 'nox.toml').read_bytes()

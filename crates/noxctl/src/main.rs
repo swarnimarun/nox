@@ -172,7 +172,7 @@ fn init(args: InitArgs) -> Result<(), Box<dyn Error>> {
         config.capabilities.insert(Capability::Recovery);
     }
     if config.profile == Profile::Workspace {
-        config.capabilities.insert(Capability::Development);
+        config.capabilities = [Capability::Development].into_iter().collect();
     }
     config.name = directory
         .file_name()

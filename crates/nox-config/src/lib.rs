@@ -183,6 +183,9 @@ impl NoxConfig {
                 errors.push(format!("extra module must be a relative .nix path inside the machine directory: {module}"));
             }
         }
+        if self.target == Target::Oci && self.capabilities.iter().any(|c| !matches!(c, Capability::Development | Capability::Storage | Capability::Shares)) {
+            errors.push("oci only supports development, storage and shares userspace tools; use a VM for system services".to_owned());
+        }
         if self.target == Target::Oci && self.profile != Profile::Workspace {
             errors.push("oci target requires the workspace profile".to_owned());
         }

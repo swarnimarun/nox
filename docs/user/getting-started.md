@@ -13,8 +13,8 @@ bash scripts/bootstrap.sh
 ./result/bin/noxctl --help
 ```
 
-Bootstrap explicitly resolves lockfiles. Review and commit both locks before
-sharing a reproducible configuration. Install the built CLI if desired:
+The committed lockfiles pin the build. Bootstrap resolves locks only if they
+are missing; review any newly generated locks before sharing the configuration. Install the built CLI if desired:
 
 ```sh
 nix profile install .#noxctl
@@ -46,6 +46,12 @@ For an ephemeral x86 VM (supply your OVMF firmware path):
 
 ```sh
 bash scripts/run-vm.sh result-vm/nixos.qcow2 /path/to/OVMF_CODE.fd
+```
+
+An automated serial-console smoke test is also available:
+
+```sh
+nix run .#vm-smoke -- --timeout 600
 ```
 
 The runner uses a snapshot and does not persist guest disk writes. To test

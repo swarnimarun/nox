@@ -6,6 +6,7 @@
       ../../nix/profiles/server.nix
       ../../nix/capabilities
     ];
+    networking.hostName = "machine";
     nox.capabilities = [
       "development"
       "apps"
