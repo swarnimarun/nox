@@ -1,4 +1,9 @@
-use std::{error::Error, fs, path::{Path, PathBuf}, process::Command};
+use std::{
+    error::Error,
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use nox_config::{example_config, load, Capability, Profile, Target};
@@ -62,10 +67,22 @@ enum ImageCommand {
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
-enum ProfileName { Server, Desktop, Gaming, Workspace, Recovery }
+enum ProfileName {
+    Server,
+    Desktop,
+    Gaming,
+    Workspace,
+    Recovery,
+}
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
-enum TargetName { Metal, Iso, Qcow2, Wsl, Oci }
+enum TargetName {
+    Metal,
+    Iso,
+    Qcow2,
+    Wsl,
+    Oci,
+}
 
 fn main() {
     if let Err(error) = run() {
@@ -155,12 +172,24 @@ fn future_command(command: &str, _path: &Path) -> Result<(), Box<dyn Error>> {
 
 impl From<ProfileName> for Profile {
     fn from(value: ProfileName) -> Self {
-        match value { ProfileName::Server => Self::Server, ProfileName::Desktop => Self::Desktop, ProfileName::Gaming => Self::Gaming, ProfileName::Workspace => Self::Workspace, ProfileName::Recovery => Self::Recovery }
+        match value {
+            ProfileName::Server => Self::Server,
+            ProfileName::Desktop => Self::Desktop,
+            ProfileName::Gaming => Self::Gaming,
+            ProfileName::Workspace => Self::Workspace,
+            ProfileName::Recovery => Self::Recovery,
+        }
     }
 }
 
 impl From<TargetName> for Target {
     fn from(value: TargetName) -> Self {
-        match value { TargetName::Metal => Self::Metal, TargetName::Iso => Self::Iso, TargetName::Qcow2 => Self::Qcow2, TargetName::Wsl => Self::Wsl, TargetName::Oci => Self::Oci }
+        match value {
+            TargetName::Metal => Self::Metal,
+            TargetName::Iso => Self::Iso,
+            TargetName::Qcow2 => Self::Qcow2,
+            TargetName::Wsl => Self::Wsl,
+            TargetName::Oci => Self::Oci,
+        }
     }
 }

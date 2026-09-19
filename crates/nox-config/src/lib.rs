@@ -124,10 +124,7 @@ pub struct NixSettings {
 
 impl Default for NixSettings {
     fn default() -> Self {
-        Self {
-            channel: default_nixpkgs_channel(),
-            extra_modules: Vec::new(),
-        }
+        Self { channel: default_nixpkgs_channel(), extra_modules: Vec::new() }
     }
 }
 
@@ -174,7 +171,11 @@ impl NoxConfig {
         if self.target == Target::Oci && !self.capabilities.contains(&Capability::Development) {
             errors.push("oci target requires the development capability".to_owned());
         }
-        if errors.is_empty() { Ok(()) } else { Err(errors) }
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
     }
 }
 
@@ -189,21 +190,15 @@ pub enum ConfigError {
     #[error("could not parse TOML: {0}")]
     Parse(#[from] toml::de::Error),
     #[error("invalid {field} value {value:?}; expected one of: {expected}")]
-    InvalidValue {
-        field: &'static str,
-        value: String,
-        expected: String,
-    },
+    InvalidValue { field: &'static str, value: String, expected: String },
     #[error("configuration is invalid:\n{0}")]
     Invalid(String),
 }
 
 pub fn load(path: impl AsRef<Path>) -> Result<NoxConfig, ConfigError> {
     let path = path.as_ref();
-    let contents = fs::read_to_string(path).map_err(|source| ConfigError::Read {
-        path: path.display().to_string(),
-        source,
-    })?;
+    let contents = fs::read_to_string(path)
+        .map_err(|source| ConfigError::Read { path: path.display().to_string(), source })?;
     parse(&contents)
 }
 
@@ -221,13 +216,10 @@ pub fn example_config() -> NoxConfig {
         name: "nox-machine".to_owned(),
         profile: Profile::Server,
         target: Target::Metal,
-        capabilities: [Capability::Apps, Capability::RemoteManagement]
-            .into_iter()
-            .collect(),
+        capabilities: [Capability::Apps, Capability::RemoteManagement].into_iter().collect(),
         nix: NixSettings::default(),
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -251,4 +243,3 @@ mod tests {
         assert!(config.validate().is_err());
     }
 }
-

@@ -10,7 +10,6 @@ pub struct Plan {
     pub capabilities: Vec<String>,
     pub actions: Vec<String>,
 }
-
 pub fn plan(config: &NoxConfig) -> Plan {
     let mut capabilities = config
         .capabilities
@@ -76,4 +75,3 @@ mod tests {
         assert_eq!(result.capabilities, vec!["apps", "remote-management", "storage"]);
     }
 }
-
