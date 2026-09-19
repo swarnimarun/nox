@@ -1,0 +1,17 @@
+[package]
+name = "noxctl"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "The Nox declarative Linux platform CLI"
+
+[[bin]]
+name = "noxctl"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+nox-config = { path = "../nox-config" }
+nox-core = { path = "../nox-core" }
+toml.workspace = true
+

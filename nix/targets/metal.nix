@@ -1,0 +1,6 @@
+{ ... }:
+
+{
+  nox.target = "metal";
+}
+

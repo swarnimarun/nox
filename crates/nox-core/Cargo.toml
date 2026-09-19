@@ -1,0 +1,9 @@
+[package]
+name = "nox-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+nox-config = { path = "../nox-config" }
+
