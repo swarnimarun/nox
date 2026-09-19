@@ -1,0 +1,9 @@
+schema_version = 1
+name = "nox-container"
+profile = "workspace"
+target = "oci"
+capabilities = ["development"]
+
+[nix]
+channel = "nixos-26.05"
+extra_modules = []

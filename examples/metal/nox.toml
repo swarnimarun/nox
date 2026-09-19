@@ -1,0 +1,9 @@
+schema_version = 1
+name = "nox-metal"
+profile = "server"
+target = "metal"
+capabilities = ["remote-management"]
+
+[nix]
+channel = "nixos-26.05"
+extra_modules = ["disk.nix", "hardware.nix", "access.nix"]

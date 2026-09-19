@@ -59,6 +59,13 @@ Nox delegates implementation-heavy primitives to established projects:
 - The CLI must be `noxctl`, not `nox`: the name `nox` is already used by a
   mature Python development-session tool.
 
+## Implementation status
+
+The scaffold milestone below is historical. The current component-by-component
+plan and acceptance gates are in [the implementation plan](docs/operations/implementation-plan.md).
+Build/image/lock/install/generations now have implementations; apply/rollback
+remain reserved. Artifact support requires runtime evidence, not just modules.
+
 ## Initial milestone: prove the core thesis
 
 The first milestone is deliberately small:
@@ -121,3 +128,4 @@ Nox 1.0 should be able to produce, install, safely upgrade, and roll back a
 NixOS-based server or desktop, provide a useful recovery image, support WSL
 and isolated workspaces, and expose storage/apps/VMs/containers through stable
 contracts. Clustering is explicitly beyond the first stable release.
+

@@ -23,7 +23,9 @@ PY
 
 if command -v cargo >/dev/null 2>&1; then
   cargo fmt --all -- --check
-  cargo test --workspace
+  cargo test --workspace --locked
+  cargo build -p noxctl --locked
+  python3 -m unittest discover -s tests/cli -v
 else
   echo "skip: cargo is not installed"
 fi
@@ -31,9 +33,10 @@ fi
 if command -v nix >/dev/null 2>&1; then
   nix develop --command bash -lc 'nix fmt .'
   git diff --exit-code -- . ':!flake.lock'
-  nix flake check
+  nix flake check --no-update-lock-file
 else
   echo "skip: nix is not installed"
 fi
 
 echo "validation complete"
+
