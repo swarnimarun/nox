@@ -1,0 +1,29 @@
+schema_version = 1
+name = "nox-hyprland-live"
+profile = "gaming"
+target = "iso"
+capabilities = ["desktop", "gaming"]
+
+[desktop]
+flavour = "hyprland"
+
+[hardware]
+graphics = "auto"
+
+[boot]
+loader = "systemd-boot"
+
+[install]
+filesystem = "btrfs"
+
+[locale]
+locale = "en_US.UTF-8"
+timezone = "UTC"
+keymap = "us"
+
+[user]
+name = "nox"
+
+[nix]
+channel = "nixos-26.05"
+extra_modules = []

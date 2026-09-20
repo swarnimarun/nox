@@ -2,18 +2,23 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - "recovery/**"
     paths:
-      - ".github/workflows/ci.yml"
+      - ".github/workflows/**"
       - "Cargo.lock"
       - "Cargo.toml"
       - "crates/**"
       - "flake.lock"
       - "flake.nix"
       - "nix/**"
+      - "installer/**"
       - "examples/**"
       - "scripts/**"
       - "tests/**"
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -35,6 +40,7 @@ jobs:
       - run: cargo test --workspace --locked
       - run: cargo build -p noxctl --locked
       - run: python3 -m unittest discover -s tests/cli -v
+      - run: python3 -m py_compile installer/nox-installer.py tests/boot_iso.py tests/boot_qcow2.py
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
   nix:
@@ -51,3 +57,18 @@ jobs:
           nix fmt .
           git diff --exit-code
       - run: nix flake check --no-update-lock-file --show-trace
+      - name: Validate generated project and dotfiles flakes
+        run: |
+          cargo run --locked -p noxctl -- dotfiles init "$RUNNER_TEMP/nox-dotfiles" --username nox --no-lock
+          cargo run --locked -p noxctl -- setup "$RUNNER_TEMP/nox-machine" \
+            --source "path:$GITHUB_WORKSPACE" \
+            --profile desktop \
+            --target qcow2 \
+            --flavour niri \
+            --dotfiles-flake "path:$RUNNER_TEMP/nox-dotfiles"
+          test "$(nix eval --no-update-lock-file --raw \
+            "path:$RUNNER_TEMP/nox-machine#nixosConfigurations.nox.config.home-manager.users.nox.home.username")" = nox
+          nix eval --no-update-lock-file --raw \
+            "path:$RUNNER_TEMP/nox-machine#nixosConfigurations.nox.config.system.build.toplevel.drvPath"
+          cargo run --locked -p noxctl -- upgrade list \
+            --config "$RUNNER_TEMP/nox-machine/nox.toml"
