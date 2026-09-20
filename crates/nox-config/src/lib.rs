@@ -320,7 +320,7 @@ pub struct NoxConfig {
 
 impl NoxConfig {
     pub fn desktop_flavour(&self) -> DesktopFlavour {
-        self.desktop.flavour.unwrap_or_else(|| {
+        self.desktop.flavour.unwrap_or({
             if matches!(self.profile, Profile::Desktop | Profile::Gaming) {
                 DesktopFlavour::Hyprland
             } else {
