@@ -1,0 +1,81 @@
+name: WSL prerelease
+
+on:
+  # Creating or intentionally editing this workflow publishes one build. Later
+  # prereleases are manual, so ordinary main pushes do not rebuild an image.
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/wsl-prerelease.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: write
+
+concurrency:
+  group: wsl-prerelease
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Remove stale Actions artifacts
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const artifacts = await github.paginate(
+              github.rest.actions.listArtifactsForRepo,
+              { owner: context.repo.owner, repo: context.repo.repo, per_page: 100 },
+            );
+            for (const artifact of artifacts) {
+              await github.rest.actions.deleteArtifact({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                artifact_id: artifact.id,
+              });
+            }
+            core.info(`Deleted ${artifacts.length} stale Actions artifact(s)`);
+
+      - name: Build Nox WSL tarball builder
+        run: nix build --no-update-lock-file .#wsl --out-link result-wsl
+
+      - name: Produce importable WSL distribution
+        run: |
+          sudo ./result-wsl/bin/nixos-wsl-tarball-builder "$PWD/nox-wsl-x86_64-linux.wsl"
+          test -s nox-wsl-x86_64-linux.wsl
+          test "$(stat --format=%s nox-wsl-x86_64-linux.wsl)" -gt 104857600
+          tar -tzf nox-wsl-x86_64-linux.wsl | grep -qx './etc/wsl-distribution.conf'
+          tar -tzf nox-wsl-x86_64-linux.wsl | grep -qx './etc/nixos/configuration.nix'
+
+      - name: Record release evidence
+        run: |
+          sha256sum nox-wsl-x86_64-linux.wsl > nox-wsl-x86_64-linux.wsl.sha256
+          jq -n \
+            --arg commit "$GITHUB_SHA" \
+            --arg architecture "x86_64-linux" \
+            --arg image_sha256 "$(cut -d' ' -f1 nox-wsl-x86_64-linux.wsl.sha256)" \
+            --arg flake_lock_sha256 "$(sha256sum flake.lock | cut -d' ' -f1)" \
+            --arg cargo_lock_sha256 "$(sha256sum Cargo.lock | cut -d' ' -f1)" \
+            '{commit: $commit, architecture: $architecture, image_sha256: $image_sha256, flake_lock_sha256: $flake_lock_sha256, cargo_lock_sha256: $cargo_lock_sha256}' \
+            > nox-wsl-x86_64-linux.provenance.json
+
+      - name: Publish prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.1.0-alpha.${{ github.run_number }}
+          name: Nox v0.1.0-alpha.${{ github.run_number }}
+          prerelease: true
+          generate_release_notes: true
+          files: |
+            nox-wsl-x86_64-linux.wsl
+            nox-wsl-x86_64-linux.wsl.sha256
+            nox-wsl-x86_64-linux.provenance.json

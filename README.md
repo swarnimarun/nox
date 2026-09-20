@@ -26,6 +26,11 @@ bash scripts/bootstrap.sh
 nix build --no-update-lock-file .#qcow2 --out-link result-vm
 ```
 
+Importable WSL images are published as assets on the
+[GitHub prereleases](https://github.com/swarnimarun/nox/releases). Download the
+`.wsl` file, not a GitHub Actions artifact and not the tarball-builder output.
+Verify the adjacent SHA-256 file before importing it.
+
 Cargo and Nix dependencies are pinned in committed lockfiles. See
 [getting started](docs/user/getting-started.md) for exact VM, WSL, container and
 metal installation steps, including test credentials and destructive boundaries.

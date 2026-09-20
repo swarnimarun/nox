@@ -80,6 +80,20 @@ Nix modules are executable configuration and can override system settings.
 
 ## WSL
 
+The recommended installation path is the latest GitHub prerelease. Download
+`nox-wsl-x86_64-linux.wsl` and its `.sha256` file, verify the checksum, then
+import it from PowerShell:
+
+```powershell
+Get-FileHash .\nox-wsl-x86_64-linux.wsl -Algorithm SHA256
+.\scripts\import-wsl.ps1 -Image .\nox-wsl-x86_64-linux.wsl -InstallLocation C:\WSL\Nox -Name Nox
+wsl -d Nox
+```
+
+The release workflow executes the upstream NixOS-WSL tarball builder. A Nix
+build of `.#wsl` alone produces that builder program, not an importable root
+filesystem.
+
 On a Linux Nix builder:
 
 ```sh
