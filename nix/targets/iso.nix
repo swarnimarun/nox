@@ -18,7 +18,7 @@
   # The upstream installation profile otherwise boots to a console-only target.
   services.displayManager.enable = lib.mkForce true;
   systemd.defaultUnit = lib.mkForce "graphical.target";
-  systemd.services.greetd.wantedBy = lib.mkForce [ "graphical.target" ];
+  systemd.services.greetd.wantedBy = lib.mkForce [ "multi-user.target" ];
   environment.systemPackages = [
     inputs.self.packages.${pkgs.system}.graphical-installer
     pkgs.gparted
@@ -27,7 +27,7 @@
   ];
   systemd.services.nox-live-ready = {
     description = "Verify that the Nox live compositor and installer started";
-    wantedBy = [ "graphical.target" ];
+    wantedBy = [ "multi-user.target" ];
     after = [
       "NetworkManager.service"
       "greetd.service"
