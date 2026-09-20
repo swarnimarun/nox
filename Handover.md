@@ -1,111 +1,83 @@
 # Nox implementation handover
 
 Updated: 2026-09-20  
-Intended recipient: Sol Max  
-Repository: `swarnimarun/nox`
+Recovery branch: `recovery/niri-wayland-installer`  
+Validated implementation commit: `71c8c0ae9f76174c6e37875f5078fea76fe71cd0`
 
 ## Executive status
 
-The canonical `main` branch is still at `0840104dc791f10828c37a00017e48fea6427ba7` (`style: normalize Rust and Nix formatting`). The Hyprland/Niri flavour, gaming defaults, GTK installer, local Disko installation path, and one-image release workflow described in the previous handoff were developed only in an earlier scratch workspace. They were not committed or pushed and are not present in this checkout.
+The missing Wayland/installer work was reconstructed on a dedicated recovery
+branch and expanded with project setup, dependency upgrade, custom-module, and
+Git/Home Manager dotfiles workflows. GitHub Actions run
+[35510761589](https://github.com/swarnimarun/nox/actions/runs/35510761589)
+passes both jobs at `71c8c0a`.
 
-Do not interpret the passing checks below as validation of that missing implementation. They validate only the recoverable `0840104` baseline.
+The recovery branch is ready for a pull request into `main`. The image workflow
+intentionally runs only after successful `main` CI, so exact ISO build/boot and
+prerelease publication are the remaining release gates.
 
-## Verified repository state
+## Implemented surface
 
-- `origin/main` and local `main` both resolve to `0840104dc791f10828c37a00017e48fea6427ba7`.
-- The checkout initially had no tracked or untracked product changes.
-- `Handover.md` is the only product-facing file added in this follow-up. `.tooling/` is local validation tooling and must not be committed.
-- The expected new paths are absent from Git, including:
-  - `installer/nox-installer.py`
-  - `.github/workflows/flavour-image.yml`
-  - `examples/live-hyprland/` and `examples/live-niri/`
-  - `nix/modules/boot/`, `desktop/`, `gaming/`, `hardware/`, `install/`, and `user/`
-- The current flake exposes the existing generic `iso`, `qcow2`, `wsl`, and `oci` outputs; it does not expose `hyprland-iso` or `niri-iso`.
+- Typed Hyprland/Niri, graphics, bootloader, filesystem, locale, user, and
+  stable install-disk settings in Rust, TOML, and Nix.
+- Hyprland and Niri live systems with greetd, NetworkManager, PipeWire,
+  portals, keyring/polkit, Waybar, starter compositor configs, and GTK4
+  installer autostart.
+- Gaming defaults for Steam/Proton, GameScope, GameMode, MangoHud, Lutris,
+  Wine tooling, and 32-bit graphics.
+- AMD, Intel, NVIDIA open/proprietary, automatic, and VM graphics selections.
+- Disko Btrfs/ext4 layouts, systemd-boot/GRUB EFI, and guarded local or remote
+  installation using one exact `/dev/disk/by-id/...` device.
+- `noxctl setup`, offline `init`, automatic Nix experimental flags, guarded
+  upgrade preview/apply, project-local module registration, and a Git-ready
+  Home Manager dotfiles flake scaffold.
+- Serialized CI builds for Hyprland ISO, Niri ISO, and WSL. A full release run
+  deletes stale Actions artifacts and other prereleases, then publishes image,
+  SHA-256, and provenance files under `v0.2.0-alpha.1`.
 
-## Validation performed in this follow-up
+## Verified evidence
 
-Environment evidence:
+| Gate | Result |
+|---|---|
+| Rust formatting | Pass |
+| Rust workspace tests | Pass |
+| `noxctl` locked build | Pass |
+| Python CLI lifecycle suite | Pass, including setup/modules/upgrades/dotfiles and installer interlocks |
+| Python syntax checks | Pass |
+| Clippy with warnings denied | Pass |
+| Nix formatting | Pass |
+| `nix flake check --no-update-lock-file --show-trace` | Pass |
+| NixOS server VM test | Pass as part of flake checks |
+| Generated Niri/qcow2 project with generated Home Manager dotfiles flake | Lock and evaluation pass |
+| Non-mutating upgrade preview against a real generated flake | Pass |
+| Exact Hyprland/Niri ISO UEFI boot | Pending post-merge release workflow |
+| WSL archive packaging/validation | Pending post-merge release workflow |
+| Windows WSL2 launch, physical GPU coverage, installed-system reboot | External runtime evidence still required |
 
-```text
-architecture: x86_64
-rustc: 1.85.0 (4d91de4e4 2025-02-17)
-cargo: 1.85.0 (d73d2caf9 2024-12-31)
-python: 3.12.14
-Cargo.lock SHA256: fb48625ad78a2e06188b1acf0ca68771d8586b0d49608868997d371df62f26f0
-flake.lock SHA256: 8ae35abd1312e16297bd00e5e1f4846a2d26cfc01dc79825ee2c740e9e4c8433
-```
+The ISO readiness service now withholds its serial marker until NetworkManager,
+greetd, the expected compositor process, and `nox-installer` are all running.
+The release workflow boots the exact copied release ISO under QEMU/TCG with
+UEFI and records the image and boot-log hashes in provenance.
 
-Current-baseline results:
+## Safety boundaries
 
-| Check | Result | Scope |
-|---|---|---|
-| `cargo fmt --all -- --check` | Pass | Baseline Rust sources |
-| `cargo test --workspace --locked` | Pass | 4 `nox-config`, 2 `nox-core`, 1 `noxctl` unit test |
-| `cargo build -p noxctl --locked` | Pass | Baseline CLI |
-| `python3 -m unittest discover -s tests/cli -v` | Pass | 15 fake-process lifecycle tests |
-| `cargo clippy --workspace --all-targets --locked -- -D warnings` | Pass | Baseline workspace |
-| TOML parsing | Pass | 56 files found in the checkout, including local tool metadata |
-| `bash -n scripts/*.sh` | Pass | Baseline shell scripts |
-| `git diff --check` | Pass | Current textual changes |
-| `nix flake check --no-update-lock-file --show-trace` | Not run | `nix` is unavailable |
-| ISO build | Not run | `nix` is unavailable and flavour outputs are missing |
-| UEFI VM/live-session test | Not run | QEMU is unavailable and no flavour ISO exists |
-| Destructive install/reboot test | Not run | Requires recovered code and a disposable disk/VM |
+- `noxctl` may update `nox.toml` and `flake.lock`; it creates extension modules
+  only in a new empty project and never rewrites user-owned `.nix` files.
+- Upgrade preview resolves to a temporary alternate lock. Upgrade apply restores
+  the previous lock if the new toplevel does not build.
+- Upgrade apply does not activate or reboot the system.
+- Disk mutation requires a stable by-id disk, an exact confirmation, a locked
+  immutable flake snapshot, single-disk verification, and a successful preflight
+  toplevel build.
+- `apply` and `rollback` remain reserved until timed recovery, health checks,
+  and failure-injection coverage exist.
 
-## Intended implementation that must be recovered or reapplied
+## Release sequence
 
-The earlier scratch implementation was reported to contain the following. These are design notes, not claims about the current Git tree:
-
-- Typed TOML/Rust settings for desktop flavour, graphics driver, bootloader, filesystem, locale, user, and install disk.
-- Hyprland and Niri desktop modules with greetd, NetworkManager, PipeWire, portals, policy/keyring support, and starter configurations.
-- Gaming defaults for Steam, Proton, GameScope, GameMode, MangoHud, Wine tooling, and 32-bit graphics.
-- AMD, Intel, NVIDIA open/proprietary, and VM graphics selections.
-- Explicit `/dev/disk/by-id/...` installation disks, Disko Btrfs/ext4 layouts, and systemd-boot/GRUB EFI choices.
-- A GTK4 `nox-installer` that generates the declarative project through `noxctl`, validates before mutation, and requests confirmation before erasing a disk.
-- `noxctl installer gui` and a guarded `noxctl installer local` flow.
-- Separate `hyprland-iso` and `niri-iso` outputs.
-- A manual-only workflow that builds and publishes exactly one selected flavour per invocation.
-
-The earlier reported Rust/CLI tests included additional cases, but their sources are missing, so those results cannot be reproduced or treated as evidence.
-
-## Next concrete action
-
-Recover the prior scratch working tree or reapply the implementation onto a new branch from `0840104`. Do not start image builds against the current baseline: the requested flavour outputs do not exist.
-
-Once the code is recovered:
-
-1. Compare it with this checkout using `git diff --no-index` or apply it as a patch, excluding `.tooling/` and build outputs.
-2. Re-run Rust formatting, unit tests, CLI lifecycle tests, and Clippy.
-3. Run `nix flake check --no-update-lock-file --show-trace` in a Nix-enabled environment.
-4. Build and test only one image set at a time:
-
-   ```bash
-   nix build .#hyprland-iso --no-update-lock-file
-   # Boot, test, record evidence, then remove/archive its result.
-   nix build .#niri-iso --no-update-lock-file
-   ```
-
-5. Boot each image in a disposable UEFI VM and verify the live session, networking, audio, selected compositor, installer generation, exact-disk confirmation, installation, reboot, and persistent system.
-6. Update `README.md`, getting-started, testing, and operations documentation only after the verified interface is stable.
-7. Review the full diff, commit the complete coherent changeset directly to `main`, and push once so normal CI runs once. Invoke the manual image workflow separately for each flavour.
-
-## Safety and scope invariants
-
-- `noxctl` may write `nox.toml`; it must not rewrite arbitrary Nix modules.
-- A disk-changing command must require a stable by-id device, show the planned destructive action, and require an exact confirmation value.
-- Flake archive/evaluation and system build must complete before disk mutation.
-- Never count mock CLI tests, syntax checks, or flake evaluation as proof that an ISO boots or an installation survives reboot.
-- Keep profiles, capabilities, and targets separate. Prefer upstream NixOS, Disko, and nixos-anywhere integration.
-- Leave `apply`, rollback, daemon, web UI, clustering, and marketplace work deferred until configuration/build/install contracts have runtime evidence.
-
-## Resume commands
-
-```bash
-git fetch origin main
-git rev-parse HEAD origin/main
-git status --short
-rg -n "hyprland|niri|DesktopFlavour|installer local|flavour-image" . \
-  --glob '!target/**' --glob '!.tooling/**'
-```
-
-If the search is empty after recovery was expected, stop and locate the missing patch/worktree before doing further release validation.
+1. Open and review the recovery pull request.
+2. Merge only while branch CI is green.
+3. Confirm the merge commit's `main` CI succeeds.
+4. Let `Flavour images` build Hyprland, Niri, and WSL serially.
+5. Verify both exact ISO UEFI smoke tests and WSL archive validation.
+6. Confirm the repository has exactly one prerelease,
+   `v0.2.0-alpha.1`, with nine current assets and no stale Actions artifacts.
