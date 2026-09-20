@@ -67,9 +67,9 @@ container, and metal installation procedures.
 
 ## Images and release evidence
 
-Hyprland/Niri ISOs and an importable WSL image are published together on the
-single [GitHub prerelease](https://github.com/swarnimarun/nox/releases).
-Download the `.iso` or `.wsl` file and verify its adjacent SHA-256 file. Each
+Hyprland/Niri ISOs, an importable WSL image, and an OCI workspace image are
+published together on the single [GitHub prerelease](https://github.com/swarnimarun/nox/releases).
+Download the `.iso`, `.wsl`, or `.oci.tar.gz` file and verify its adjacent SHA-256 file. Each
 provenance JSON records the source commit, lock hashes, image hash,
 architecture, and validation performed by CI.
 
