@@ -1,5 +1,6 @@
 {
   config,
+  inputs,
   lib,
   pkgs,
   ...
@@ -11,10 +12,10 @@ let
   hyprland = flavour == "hyprland";
   live = config.nox.target == "iso";
   installerHyprland = lib.optionalString live ''
-    exec-once = nox-installer
+    exec-once = ${inputs.self.packages.${pkgs.system}.graphical-installer}/bin/nox-installer
   '';
   installerNiri = lib.optionalString live ''
-    spawn-at-startup "nox-installer"
+    spawn-at-startup "${inputs.self.packages.${pkgs.system}.graphical-installer}/bin/nox-installer"
   '';
   waybarConfig = pkgs.writeText "nox-waybar.json" (
     builtins.toJSON {
@@ -50,11 +51,11 @@ let
     decoration {
       rounding = 8
     }
-    exec-once = waybar --config /etc/nox/waybar.json
-    exec-once = nm-applet --indicator
+    exec-once = ${pkgs.waybar}/bin/waybar --config /etc/nox/waybar.json
+    exec-once = ${pkgs.networkmanagerapplet}/bin/nm-applet --indicator
     ${installerHyprland}
-    bind = $mainMod, Return, exec, foot
-    bind = $mainMod, D, exec, fuzzel
+    bind = $mainMod, Return, exec, ${pkgs.foot}/bin/foot
+    bind = $mainMod, D, exec, ${pkgs.fuzzel}/bin/fuzzel
     bind = $mainMod SHIFT, Q, killactive
     bind = $mainMod SHIFT, E, exit
     bind = $mainMod, F, fullscreen
@@ -71,12 +72,12 @@ let
     layout {
       gaps 12
     }
-    spawn-at-startup "waybar" "--config" "/etc/nox/waybar.json"
-    spawn-at-startup "nm-applet" "--indicator"
+    spawn-at-startup "${pkgs.waybar}/bin/waybar" "--config" "/etc/nox/waybar.json"
+    spawn-at-startup "${pkgs.networkmanagerapplet}/bin/nm-applet" "--indicator"
     ${installerNiri}
     binds {
-      Mod+Return { spawn "foot"; }
-      Mod+D { spawn "fuzzel"; }
+      Mod+Return { spawn "${pkgs.foot}/bin/foot"; }
+      Mod+D { spawn "${pkgs.fuzzel}/bin/fuzzel"; }
       Mod+Shift+Q { close-window; }
       Mod+Shift+E { quit; }
       Mod+F { fullscreen-window; }
@@ -85,9 +86,9 @@ let
   '';
   sessionCommand =
     if hyprland then
-      "start-hyprland --config /etc/nox/hyprland.conf"
+      "${pkgs.hyprland}/bin/start-hyprland --config /etc/nox/hyprland.conf"
     else
-      "env NIRI_CONFIG=/etc/nox/niri.kdl niri-session";
+      "env NIRI_CONFIG=/etc/nox/niri.kdl ${pkgs.niri}/bin/niri-session";
 in
 {
   config = lib.mkIf enabled (
