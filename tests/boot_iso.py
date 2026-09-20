@@ -3,7 +3,9 @@
 import argparse
 from pathlib import Path
 import selectors
+import shutil
 import subprocess
+import tempfile
 import time
 
 parser = argparse.ArgumentParser()
@@ -13,8 +15,18 @@ parser.add_argument("--expect-flavour", choices=["hyprland", "niri"], required=T
 parser.add_argument("--timeout", type=int, default=600)
 parser.add_argument("--log", type=Path, default=Path("iso-boot-console.log"))
 args = parser.parse_args()
-if not args.image.is_file() or not args.firmware.is_file() or "," in str(args.image):
-    parser.error("image and firmware must be files; image path cannot contain commas")
+variables = args.firmware.with_name("OVMF_VARS.fd")
+if (
+    not args.image.is_file()
+    or not args.firmware.is_file()
+    or not variables.is_file()
+    or "," in str(args.image)
+    or "," in str(args.firmware)
+):
+    parser.error("image, OVMF code, and adjacent OVMF variables must be files without commas")
+firmware_state = tempfile.TemporaryDirectory(prefix="nox-ovmf-")
+writable_variables = Path(firmware_state.name) / "OVMF_VARS.fd"
+shutil.copy2(variables, writable_variables)
 
 marker = f"NOX_LIVE_READY flavour={args.expect_flavour}".encode()
 command = [
@@ -27,8 +39,10 @@ command = [
     "4096",
     "-smp",
     "2",
-    "-bios",
-    str(args.firmware),
+    "-drive",
+    f"if=pflash,format=raw,readonly=on,file={args.firmware}",
+    "-drive",
+    f"if=pflash,format=raw,file={writable_variables}",
     "-boot",
     "d",
     "-cdrom",
@@ -79,6 +93,7 @@ finally:
     except subprocess.TimeoutExpired:
         process.kill()
         process.wait()
+    firmware_state.cleanup()
 
 if not success:
     console = args.log.read_text(errors="replace")[-65536:]
