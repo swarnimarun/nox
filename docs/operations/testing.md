@@ -19,13 +19,20 @@ installer can boot a destination.
 
 The Nix check forces each artifact derivation, rather than just stateVersion.
 The server VM test boots NixOS, waits for multi-user and SSH, and checks Git and
-Podman. It does not boot the exact published qcow2/ISO images.
+Podman. CI also creates a real generated Niri/qcow2 project, attaches the
+generated Home Manager dotfiles flake, locks it, evaluates its toplevel and
+Home Manager user, and runs the non-mutating upgrade preview.
+
+The release workflow is the exact-image gate. It starts after successful
+`main` CI, removes stale Actions artifacts, and builds Hyprland, Niri, and WSL
+serially. Each ISO boots with QEMU/TCG and UEFI; its marker is emitted only after
+NetworkManager, greetd, the expected compositor, and `nox-installer` run.
 
 ## Target release evidence
 
 | Target | Required runtime evidence |
 |---|---|
-| ISO | EFI guest reaches installer shell; recovery tools and noxctl run |
+| Hyprland/Niri ISO | Exact ISO boots with UEFI; NetworkManager, greetd, selected compositor, and GTK installer run |
 | qcow2 | Exact image boots, local login works, filesystem persists on a non-snapshot test |
 | WSL | Build tarball, Windows WSL2 import, default user, systemd and noxctl |
 | OCI | Rootless Podman load/run; shell, Git and noxctl; no host filesystem changes |
@@ -34,8 +41,10 @@ Podman. It does not boot the exact published qcow2/ISO images.
 
 Record commit SHA, flake.lock, Cargo.lock, architecture, image SHA256, command,
 exit status and console logs. A failed or skipped test never counts as support.
-The manually dispatched image workflow builds all artifacts; WSL's result is
-its builder, whose root packaging step still needs execution on a suitable host.
+The workflow may also be dispatched for `all`, one compositor, or WSL. A full
+run deletes other prereleases and publishes image, SHA-256, and provenance files
+to `v0.2.0-alpha.1`. Heavyweight jobs use `max-parallel: 1`. WSL packaging runs
+as root in CI; Windows WSL2 launch validation remains external.
 
 ## Before enabling apply or rollback
 
