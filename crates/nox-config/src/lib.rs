@@ -257,11 +257,7 @@ pub struct LocaleSettings {
 
 impl Default for LocaleSettings {
     fn default() -> Self {
-        Self {
-            locale: default_locale(),
-            timezone: default_timezone(),
-            keymap: default_keymap(),
-        }
+        Self { locale: default_locale(), timezone: default_timezone(), keymap: default_keymap() }
     }
 }
 
@@ -391,9 +387,8 @@ impl NoxConfig {
                 || disk.contains("..")
                 || disk.contains("REPLACE")
             {
-                errors.push(
-                    "install.disk must be a concrete /dev/disk/by-id/... device".to_owned(),
-                );
+                errors
+                    .push("install.disk must be a concrete /dev/disk/by-id/... device".to_owned());
             }
             if self.target != Target::Metal {
                 errors.push("install.disk is only valid for the metal target".to_owned());
@@ -504,10 +499,9 @@ fn valid_username(value: &str) -> bool {
         && value != "root"
         && value.len() <= 32
         && (bytes[0].is_ascii_lowercase() || bytes[0] == b'_')
-        && bytes
-            .iter()
-            .copied()
-            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'_' | b'-'))
+        && bytes.iter().copied().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'_' | b'-')
+        })
 }
 
 fn valid_setting(value: &str, allow_slash: bool) -> bool {

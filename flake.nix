@@ -70,49 +70,54 @@
     in
     {
       lib = noxLib;
-      packages = each (system: {
-        noxctl = cli system;
-        graphical-installer = graphicalInstaller system;
-        disko = inputs.disko.packages.${system}.disko;
-        default = self.packages.${system}.noxctl;
-        iso = noxLib.artifact (machine system "recovery");
-        qcow2 = noxLib.artifact (machine system "vm");
-        wsl = noxLib.artifact (machine system "wsl");
-        oci = noxLib.artifact (machine system "container");
-        installer = inputs.nixos-anywhere.packages.${system}.default;
-        vm-smoke = nixpkgs.legacyPackages.${system}.writeShellApplication {
-          name = "nox-vm-smoke";
-          runtimeInputs = with nixpkgs.legacyPackages.${system}; [
-            python3
-            qemu
-          ];
-          text = ''
-            exec python3 ${./tests/boot_qcow2.py} ${self.packages.${system}.qcow2}/nixos.qcow2 ${
-              nixpkgs.legacyPackages.${system}.OVMF.fd.firmware
-            } "$@"
-          '';
-        };
-      }
-      // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
-        hyprland-iso = noxLib.artifact (liveMachine system "hyprland");
-        niri-iso = noxLib.artifact (liveMachine system "niri");
-        iso-smoke = nixpkgs.legacyPackages.${system}.writeShellApplication {
-          name = "nox-iso-smoke";
-          runtimeInputs = with nixpkgs.legacyPackages.${system}; [
-            python3
-            qemu
-          ];
-          text = ''
-            if [ "$#" -lt 1 ]; then
-              echo "usage: nox-iso-smoke IMAGE.iso [OPTIONS]" >&2
-              exit 2
-            fi
-            image="$1"
-            shift
-            exec python3 ${./tests/boot_iso.py} "$image" ${nixpkgs.legacyPackages.${system}.OVMF.fd.firmware} "$@"
-          '';
-        };
-      });
+      packages = each (
+        system:
+        {
+          noxctl = cli system;
+          graphical-installer = graphicalInstaller system;
+          disko = inputs.disko.packages.${system}.disko;
+          default = self.packages.${system}.noxctl;
+          iso = noxLib.artifact (machine system "recovery");
+          qcow2 = noxLib.artifact (machine system "vm");
+          wsl = noxLib.artifact (machine system "wsl");
+          oci = noxLib.artifact (machine system "container");
+          installer = inputs.nixos-anywhere.packages.${system}.default;
+          vm-smoke = nixpkgs.legacyPackages.${system}.writeShellApplication {
+            name = "nox-vm-smoke";
+            runtimeInputs = with nixpkgs.legacyPackages.${system}; [
+              python3
+              qemu
+            ];
+            text = ''
+              exec python3 ${./tests/boot_qcow2.py} ${self.packages.${system}.qcow2}/nixos.qcow2 ${
+                nixpkgs.legacyPackages.${system}.OVMF.fd.firmware
+              } "$@"
+            '';
+          };
+        }
+        // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
+          hyprland-iso = noxLib.artifact (liveMachine system "hyprland");
+          niri-iso = noxLib.artifact (liveMachine system "niri");
+          iso-smoke = nixpkgs.legacyPackages.${system}.writeShellApplication {
+            name = "nox-iso-smoke";
+            runtimeInputs = with nixpkgs.legacyPackages.${system}; [
+              python3
+              qemu
+            ];
+            text = ''
+              if [ "$#" -lt 1 ]; then
+                echo "usage: nox-iso-smoke IMAGE.iso [OPTIONS]" >&2
+                exit 2
+              fi
+              image="$1"
+              shift
+              exec python3 ${./tests/boot_iso.py} "$image" ${
+                nixpkgs.legacyPackages.${system}.OVMF.fd.firmware
+              } "$@"
+            '';
+          };
+        }
+      );
       apps = each (system: {
         default = {
           type = "app";
@@ -146,10 +151,12 @@
         in
         {
           cli = cli system;
-          installer-syntax = pkgs.runCommand "nox-installer-syntax" { nativeBuildInputs = [ pkgs.python3 ]; } ''
-            python3 -m py_compile ${./installer/nox-installer.py}
-            touch $out
-          '';
+          installer-syntax =
+            pkgs.runCommand "nox-installer-syntax" { nativeBuildInputs = [ pkgs.python3 ]; }
+              ''
+                python3 -m py_compile ${./installer/nox-installer.py}
+                touch $out
+              '';
           server-boot = pkgs.testers.runNixOSTest (import ./tests/nix/server-boot.nix);
           target-evaluation = pkgs.runCommand "nox-target-evaluation" { } (
             builtins.deepSeq (map (name: (noxLib.artifact (machine system name)).drvPath) [
@@ -167,14 +174,12 @@
               niri = liveMachine system "niri";
             in
             pkgs.runCommand "nox-flavour-contract" { } (
-              builtins.deepSeq
-                [
-                  hyprland.config.system.build.isoImage.drvPath
-                  hyprland.config.nox.desktop.flavour
-                  niri.config.system.build.isoImage.drvPath
-                  niri.config.nox.desktop.flavour
-                ]
-                "touch $out"
+              builtins.deepSeq [
+                hyprland.config.system.build.isoImage.drvPath
+                hyprland.config.nox.desktop.flavour
+                niri.config.system.build.isoImage.drvPath
+                niri.config.nox.desktop.flavour
+              ] "touch $out"
             );
         }
       );

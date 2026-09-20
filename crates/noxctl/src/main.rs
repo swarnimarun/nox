@@ -231,13 +231,9 @@ fn run() -> Result<(), Box<dyn Error>> {
         CommandKind::Installer(InstallerArgs { command: InstallerCommand::Gui { dry_run } }) => {
             lifecycle::installer_gui(dry_run)
         }
-        CommandKind::Installer(InstallerArgs {
-            command: InstallerCommand::Local(args),
-        }) => lifecycle::install_local(
-            &args.config,
-            args.confirm_disk.as_deref(),
-            args.execute,
-        ),
+        CommandKind::Installer(InstallerArgs { command: InstallerCommand::Local(args) }) => {
+            lifecycle::install_local(&args.config, args.confirm_disk.as_deref(), args.execute)
+        }
         CommandKind::Apply(args) => future_command("apply", &args.config),
         CommandKind::Generations => lifecycle::generations(),
         CommandKind::Rollback => future_command("rollback", Path::new(".")),
@@ -264,7 +260,9 @@ fn init(args: InitArgs) -> Result<(), Box<dyn Error>> {
         Profile::Desktop => [Capability::Desktop, Capability::Development].into_iter().collect(),
         Profile::Gaming => [Capability::Desktop, Capability::Gaming].into_iter().collect(),
         Profile::Workspace => [Capability::Development].into_iter().collect(),
-        Profile::Recovery => [Capability::Recovery, Capability::RemoteManagement].into_iter().collect(),
+        Profile::Recovery => {
+            [Capability::Recovery, Capability::RemoteManagement].into_iter().collect()
+        }
     };
     config.desktop.flavour = Some(args.flavour.map(Into::into).unwrap_or_else(|| {
         if matches!(config.profile, Profile::Desktop | Profile::Gaming) {

@@ -13,15 +13,17 @@ let
       user = raw.user or { };
       c = raw // {
         desktop = desktop // {
-          flavour =
-            desktop.flavour or
-              (if builtins.elem raw.profile [
+          flavour = desktop.flavour or (
+            if
+              builtins.elem raw.profile [
                 "desktop"
                 "gaming"
-              ] then
+              ]
+            then
                 "hyprland"
-              else
-                "none");
+            else
+              "none"
+          );
         };
         hardware = hardware // {
           graphics = hardware.graphics or "auto";
@@ -146,7 +148,9 @@ let
       "ext4"
     ]) "Unknown filesystem";
     assert lib.assertMsg validDisk "Install disk must be a concrete /dev/disk/by-id/... device";
-    assert lib.assertMsg (c.install.disk == null || c.target == "metal") "Install disk requires metal target";
+    assert lib.assertMsg (
+      c.install.disk == null || c.target == "metal"
+    ) "Install disk requires metal target";
     assert lib.assertMsg validUser "Invalid primary username";
     assert lib.assertMsg (
       !(builtins.elem c.target [

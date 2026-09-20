@@ -41,32 +41,29 @@ pub fn plan(config: &NoxConfig) -> Plan {
         actions.push(format!("configure {} graphics support", config.hardware.graphics));
     }
     actions.push(format!("prepare the {} target", config.target));
-    actions.push(
-        match config.target {
-            Target::Metal => match &config.install.disk {
-                Some(disk) => format!(
-                    "after exact confirmation, partition and format {disk} as {} and install with {}",
-                    config.install.filesystem, config.boot.loader
-                ),
-                None => "build the system; installation requires an explicit stable disk declaration"
-                    .to_owned(),
-            },
-            Target::Iso => {
-                "build EFI/USB installer media; boot and disk installation are separate operations"
-                    .to_owned()
-            }
-            Target::Qcow2 => {
-                "build an EFI qcow2 disk; test it in a disposable virtual machine".to_owned()
-            }
-            Target::Wsl => {
-                "build the WSL tarball builder; packaging requires root before Windows import"
-                    .to_owned()
-            }
-            Target::Oci => {
-                "build an OCI userspace archive; this does not boot a kernel or systemd".to_owned()
-            }
+    actions.push(match config.target {
+        Target::Metal => match &config.install.disk {
+            Some(disk) => format!(
+                "after exact confirmation, partition and format {disk} as {} and install with {}",
+                config.install.filesystem, config.boot.loader
+            ),
+            None => "build the system; installation requires an explicit stable disk declaration"
+                .to_owned(),
         },
-    );
+        Target::Iso => {
+            "build EFI/USB installer media; boot and disk installation are separate operations"
+                .to_owned()
+        }
+        Target::Qcow2 => {
+            "build an EFI qcow2 disk; test it in a disposable virtual machine".to_owned()
+        }
+        Target::Wsl => {
+            "build the WSL tarball builder; packaging requires root before Windows import".to_owned()
+        }
+        Target::Oci => {
+            "build an OCI userspace archive; this does not boot a kernel or systemd".to_owned()
+        }
+    });
 
     Plan {
         machine: config.name.clone(),

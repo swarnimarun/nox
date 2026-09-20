@@ -140,11 +140,8 @@ pub fn install_local(config: &Path, confirm_disk: Option<&str>, execute: bool) -
     if c.target != Target::Metal {
         return Err("local installation requires target = metal".into());
     }
-    let disk = c
-        .install
-        .disk
-        .as_deref()
-        .ok_or("local installation requires install.disk in nox.toml")?;
+    let disk =
+        c.install.disk.as_deref().ok_or("local installation requires install.disk in nox.toml")?;
     if !stable_disk(disk) {
         return Err("install.disk must be a concrete /dev/disk/by-id/... device".into());
     }
@@ -154,7 +151,9 @@ pub fn install_local(config: &Path, confirm_disk: Option<&str>, execute: bool) -
         "DESTRUCTIVE: local installation will erase {disk}, mount the new system at /mnt, and install Nox"
     );
     if !execute {
-        println!("Re-run with --execute --confirm-disk {disk} and provide the user password on stdin");
+        println!(
+            "Re-run with --execute --confirm-disk {disk} and provide the user password on stdin"
+        );
         return Ok(());
     }
     if confirm_disk != Some(disk) {
@@ -279,7 +278,9 @@ fn read_password() -> Result<String> {
     if password.is_empty()
         || password.chars().any(|character| matches!(character, '\n' | '\r' | ':' | '\0'))
     {
-        return Err("stdin must contain one non-empty password without colon or embedded newline".into());
+        return Err(
+            "stdin must contain one non-empty password without colon or embedded newline".into()
+        );
     }
     Ok(password)
 }
