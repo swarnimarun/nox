@@ -107,10 +107,11 @@ if name == 'nixos-enter': sys.stdin.read()
         self.assertNotIn('modules/extra.nix', parsed['nix']['extra_modules'])
         self.assertTrue(extra.is_file())
 
-    def test_upgrade_list_is_dry_run(self):
+    def test_upgrade_list_uses_a_temporary_lock(self):
         config = self.init()
         self.run_cli('upgrade', 'list', '--config', config)
-        self.assertIn('--dry-run', self.calls()[0])
+        self.assertIn('--output-lock-file', self.calls()[0])
+        self.assertIn('--flake', self.calls()[0])
         self.assertEqual((self.project / 'flake.lock').read_text(), '{}')
 
     def test_failed_upgrade_restores_lock(self):

@@ -91,7 +91,29 @@ pub fn lock_flake(root: &Path) -> Result<()> {
 pub fn upgrade_list(config: &Path) -> Result<()> {
     let root = project(config)?;
     require_lock(&root)?;
-    invoke_nix(&["flake".into(), "update".into(), "--dry-run".into(), reference(&root)], true)
+    let preview = root.join(".nox-upgrade-preview.lock");
+    if preview.exists() {
+        return Err(format!(
+            "{} already exists; remove it after checking that no other preview is running",
+            preview.display()
+        )
+        .into());
+    }
+    let result = invoke_nix(
+        &[
+            "flake".into(),
+            "update".into(),
+            "--flake".into(),
+            reference(&root),
+            "--output-lock-file".into(),
+            preview.display().to_string(),
+        ],
+        true,
+    );
+    let _ = fs::remove_file(&preview);
+    result?;
+    println!("upgrade preview complete; flake.lock was not changed");
+    Ok(())
 }
 
 pub fn upgrade_apply(config: &Path) -> Result<()> {
@@ -100,7 +122,15 @@ pub fn upgrade_apply(config: &Path) -> Result<()> {
     let lock_path = root.join("flake.lock");
     let previous = fs::read(&lock_path)?;
     let result = (|| {
-        invoke_nix(&["flake".into(), "update".into(), reference(&root)], true)?;
+        invoke_nix(
+            &[
+                "flake".into(),
+                "update".into(),
+                "--flake".into(),
+                reference(&root),
+            ],
+            true,
+        )?;
         invoke_nix(
             &[
                 "build".into(),
