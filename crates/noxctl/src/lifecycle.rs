@@ -1,9 +1,11 @@
 use nox_config::{load, Target};
 use std::{
+    env,
     error::Error,
     fs,
+    io::{Read, Write},
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, Stdio},
 };
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
@@ -104,12 +106,124 @@ pub fn install(
         return Err("--confirm-host must exactly match --host".into());
     }
     let disk = confirm_disk.ok_or("--confirm-disk must match the single Disko disk device")?;
-    if !disk.starts_with("/dev/") || disk.contains("REPLACE") {
-        return Err("invalid confirmation disk".into());
+    if !stable_disk(disk) {
+        return Err("confirmation disk must be a concrete /dev/disk/by-id/... device".into());
     }
     // Freeze the project and all flake inputs before checking disks or installing.
+    let flake = archive_flake(&flake)?;
+    args[2] = format!("{flake}#installer");
+    args[5] = format!("{flake}#nox");
+    verify_single_disk(&flake, disk)?;
+    invoke(
+        "nix",
+        &[
+            "build".into(),
+            "--no-update-lock-file".into(),
+            "--no-link".into(),
+            format!("{flake}#nixosConfigurations.nox.config.system.build.toplevel"),
+        ],
+        true,
+    )?;
+    invoke("nix", &args, true)
+}
+
+pub fn installer_gui(dry_run: bool) -> Result<()> {
+    let mut args = Vec::new();
+    if dry_run {
+        args.push("--dry-run".to_owned());
+    }
+    invoke("nox-installer", &args, true)
+}
+
+pub fn install_local(config: &Path, confirm_disk: Option<&str>, execute: bool) -> Result<()> {
+    let c = load(config)?;
+    if c.target != Target::Metal {
+        return Err("local installation requires target = metal".into());
+    }
+    let disk = c
+        .install
+        .disk
+        .as_deref()
+        .ok_or("local installation requires install.disk in nox.toml")?;
+    if !stable_disk(disk) {
+        return Err("install.disk must be a concrete /dev/disk/by-id/... device".into());
+    }
+    let root = project(config)?;
+    require_lock(&root)?;
+    println!(
+        "DESTRUCTIVE: local installation will erase {disk}, mount the new system at /mnt, and install Nox"
+    );
+    if !execute {
+        println!("Re-run with --execute --confirm-disk {disk} and provide the user password on stdin");
+        return Ok(());
+    }
+    if confirm_disk != Some(disk) {
+        return Err("--confirm-disk must exactly match install.disk".into());
+    }
+
+    let flake = archive_flake(&reference(&root))?;
+    verify_single_disk(&flake, disk)?;
+
+    // A broken system must fail before password input or disk mutation.
+    invoke(
+        "nix",
+        &[
+            "build".into(),
+            "--no-update-lock-file".into(),
+            "--no-link".into(),
+            format!("{flake}#nixosConfigurations.nox.config.system.build.toplevel"),
+        ],
+        true,
+    )?;
+
+    let password = read_password()?;
+    invoke(
+        "nix",
+        &[
+            "run".into(),
+            "--no-update-lock-file".into(),
+            format!("{flake}#disko"),
+            "--".into(),
+            "--mode".into(),
+            "destroy,format,mount".into(),
+            "--yes-wipe-all-disks".into(),
+            "--flake".into(),
+            format!("{flake}#nox"),
+        ],
+        true,
+    )?;
+
+    let target_root = install_root();
+    let project_target = target_root.join("etc/nox");
+    fs::create_dir_all(&project_target)?;
+    invoke(
+        "cp",
+        &[
+            "-a".into(),
+            format!("{}/.", flake.trim_start_matches("path:")),
+            project_target.display().to_string(),
+        ],
+        true,
+    )?;
+    invoke(
+        "nixos-install",
+        &[
+            "--no-root-password".into(),
+            "--root".into(),
+            target_root.display().to_string(),
+            "--flake".into(),
+            format!("path:{}#nox", project_target.display()),
+        ],
+        true,
+    )?;
+    set_installed_password(&target_root, &c.user.name, &password)?;
+    println!("installation complete; reboot only after reviewing the installer output");
+    Ok(())
+}
+
+fn archive_flake(flake: &str) -> Result<String> {
     let archived = Command::new("nix")
-        .args(["flake", "archive", "--json", "--no-update-lock-file", &flake])
+        .args(["flake", "archive", "--json", "--no-update-lock-file", flake])
         .output()?;
     if !archived.status.success() {
         return Err("could not snapshot the locked machine flake".into());
@@ -120,9 +234,10 @@ pub fn install(
     if !snapshot.starts_with("/nix/store/") {
         return Err("archive path is outside the Nix store".into());
     }
-    let flake = format!("path:{snapshot}");
-    args[2] = format!("{flake}#installer");
-    args[5] = format!("{flake}#nox");
+    Ok(format!("path:{snapshot}"))
+}
+
+fn verify_single_disk(flake: &str, disk: &str) -> Result<()> {
     let output = Command::new("nix")
         .args([
             "eval",
@@ -144,17 +259,55 @@ pub fn install(
     {
         return Err("installer currently accepts exactly one disk, matching --confirm-disk; review the Disko declaration".into());
     }
-    invoke(
-        "nix",
-        &[
-            "build".into(),
-            "--no-update-lock-file".into(),
-            "--no-link".into(),
-            format!("{flake}#nixosConfigurations.nox.config.system.build.toplevel"),
-        ],
-        true,
-    )?;
-    invoke("nix", &args, true)
+    Ok(())
+}
+
+fn stable_disk(disk: &str) -> bool {
+    disk.starts_with("/dev/disk/by-id/")
+        && disk.len() > "/dev/disk/by-id/".len()
+        && !disk.contains("..")
+        && !disk.contains("REPLACE")
+        && !disk.bytes().any(|byte| byte.is_ascii_whitespace())
+}
+
+fn read_password() -> Result<String> {
+    let mut password = String::new();
+    std::io::stdin().read_to_string(&mut password)?;
+    while password.ends_with('\n') || password.ends_with('\r') {
+        password.pop();
+    }
+    if password.is_empty()
+        || password.chars().any(|character| matches!(character, '\n' | '\r' | ':' | '\0'))
+    {
+        return Err("stdin must contain one non-empty password without colon or embedded newline".into());
+    }
+    Ok(password)
+}
+
+fn set_installed_password(root: &Path, username: &str, password: &str) -> Result<()> {
+    let root = root.display().to_string();
+    let mut child = Command::new("nixos-enter")
+        .args(["--root", &root, "-c", "chpasswd"])
+        .stdin(Stdio::piped())
+        .spawn()?;
+    child
+        .stdin
+        .take()
+        .ok_or("could not open nixos-enter stdin")?
+        .write_all(format!("{username}:{password}\n").as_bytes())?;
+    if !child.wait()?.success() {
+        return Err("nixos-enter failed while setting the installed user password".into());
+    }
+    Ok(())
+}
+
+fn install_root() -> PathBuf {
+    if cfg!(debug_assertions) {
+        if let Some(path) = env::var_os("NOX_TEST_INSTALL_ROOT") {
+            return PathBuf::from(path);
+        }
+    }
+    PathBuf::from("/mnt")
 }
 
 pub fn generations() -> Result<()> {
@@ -193,6 +346,7 @@ pub fn machine_flake(source: &str, system: &str) -> Result<String> {
         image = nox.lib.artifact machine;
         default = nox.lib.artifact machine;
         installer = nox.packages.{system}.installer;
+        disko = nox.packages.{system}.disko;
       }};
     }};
 }}

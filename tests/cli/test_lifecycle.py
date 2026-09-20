@@ -22,22 +22,35 @@ class Lifecycle(unittest.TestCase):
 import json, os, sys
 with open(os.environ['CALL_LOG'], 'a') as f: f.write(json.dumps(sys.argv[1:]) + '\\n')
 if sys.argv[1:3] == ['flake', 'archive']: print('{\"path\":\"/nix/store/frozen-nox\"}')
-if sys.argv[1] == 'eval': print(os.environ.get('DISKS', '{"main":{"device":"/dev/test"}}'))
+if sys.argv[1] == 'eval': print(os.environ.get('DISKS', '{"main":{"device":"/dev/disk/by-id/virtio-test"}}'))
 if sys.argv[1] == os.environ.get('FAIL_COMMAND'): sys.exit(23)
 ''')
         fake.chmod(0o755)
-        self.env = dict(os.environ, PATH=f'{self.bin}:{os.environ["PATH"]}', CALL_LOG=str(self.log))
+        helper = '''#!/usr/bin/env python3
+import json, os, pathlib, sys
+name = pathlib.Path(sys.argv[0]).name
+with open(os.environ['CALL_LOG'], 'a') as f: f.write(json.dumps([name, *sys.argv[1:]]) + '\\n')
+if name == 'nixos-enter': sys.stdin.read()
+'''
+        for name in ['cp', 'nixos-install', 'nixos-enter', 'nox-installer']:
+            path = self.bin / name
+            path.write_text(helper)
+            path.chmod(0o755)
+        self.install_root = self.root / 'target-root'
+        self.env = dict(os.environ, PATH=f'{self.bin}:{os.environ["PATH"]}',
+                        CALL_LOG=str(self.log), NOX_TEST_INSTALL_ROOT=str(self.install_root))
 
     def tearDown(self):
         self.temp.cleanup()
 
-    def run_cli(self, *args, ok=True):
-        r = subprocess.run([str(BINARY), *map(str, args)], env=self.env, text=True, capture_output=True)
+    def run_cli(self, *args, ok=True, input_text=None):
+        r = subprocess.run([str(BINARY), *map(str, args)], env=self.env, text=True,
+                           input=input_text, capture_output=True)
         self.assertEqual(r.returncode == 0, ok, r.stdout + r.stderr)
         return r
 
-    def init(self, target='metal', profile='server'):
-        self.run_cli('init', self.project, '--target', target, '--profile', profile)
+    def init(self, target='metal', profile='server', *extra):
+        self.run_cli('init', self.project, '--target', target, '--profile', profile, *extra)
         (self.project / 'flake.lock').write_text('{}')
         return self.project / 'nox.toml'
 
@@ -48,6 +61,19 @@ if sys.argv[1] == os.environ.get('FAIL_COMMAND'): sys.exit(23)
         import tomllib
         config = self.init('oci', 'workspace')
         self.assertEqual(tomllib.loads(config.read_text())['capabilities'], ['development'])
+
+    def test_init_records_niri_hardware_and_install_settings(self):
+        import tomllib
+        config = self.init('metal', 'gaming', '--flavour', 'niri', '--graphics', 'amd',
+                           '--bootloader', 'grub-efi', '--filesystem', 'ext4',
+                           '--disk', '/dev/disk/by-id/virtio-test', '--username', 'player')
+        parsed = tomllib.loads(config.read_text())
+        self.assertEqual(parsed['desktop']['flavour'], 'niri')
+        self.assertEqual(parsed['hardware']['graphics'], 'amd')
+        self.assertEqual(parsed['boot']['loader'], 'grub-efi')
+        self.assertEqual(parsed['install']['filesystem'], 'ext4')
+        self.assertEqual(parsed['install']['disk'], '/dev/disk/by-id/virtio-test')
+        self.assertEqual(parsed['user']['name'], 'player')
 
     def test_archive_failure_never_evaluates_or_installs(self):
         config = self.init()
@@ -99,17 +125,19 @@ if sys.argv[1] == os.environ.get('FAIL_COMMAND'): sys.exit(23)
 
     def execute(self, config, ok):
         return self.run_cli('install', '--config', config, '--host', 'root@test', '--execute',
-                            '--confirm-host', 'root@test', '--confirm-disk', '/dev/test', ok=ok)
+                            '--confirm-host', 'root@test',
+                            '--confirm-disk', '/dev/disk/by-id/virtio-test', ok=ok)
 
     def test_install_rejects_wrong_disk(self):
         config = self.init()
-        self.env['DISKS'] = '{"main":{"device":"/dev/other"}}'
+        self.env['DISKS'] = '{"main":{"device":"/dev/disk/by-id/virtio-other"}}'
         self.execute(config, False)
         self.assertEqual([x[0] for x in self.calls()], ['flake', 'eval'])
 
     def test_install_rejects_multiple_disks(self):
         config = self.init()
-        self.env['DISKS'] = '{"a":{"device":"/dev/test"},"b":{"device":"/dev/other"}}'
+        self.env['DISKS'] = ('{"a":{"device":"/dev/disk/by-id/virtio-test"},'
+                             '"b":{"device":"/dev/disk/by-id/virtio-other"}}')
         self.execute(config, False)
         self.assertEqual([x[0] for x in self.calls()], ['flake', 'eval'])
 
@@ -129,6 +157,41 @@ if sys.argv[1] == os.environ.get('FAIL_COMMAND'): sys.exit(23)
         config = self.init('wsl', 'workspace')
         self.execute(config, False)
         self.assertEqual(self.calls(), [])
+
+    def test_installer_gui_forwards_dry_run(self):
+        self.run_cli('installer', 'gui', '--dry-run')
+        self.assertEqual(self.calls(), [['nox-installer', '--dry-run']])
+
+    def test_local_installer_only_plans_without_execute(self):
+        config = self.init('metal', 'gaming', '--disk', '/dev/disk/by-id/virtio-test')
+        result = self.run_cli('installer', 'local', '--config', config)
+        self.assertIn('DESTRUCTIVE', result.stdout)
+        self.assertEqual(self.calls(), [])
+
+    def test_local_installer_rejects_confirmation_before_process(self):
+        config = self.init('metal', 'gaming', '--disk', '/dev/disk/by-id/virtio-test')
+        self.run_cli('installer', 'local', '--config', config, '--execute',
+                     '--confirm-disk', '/dev/disk/by-id/virtio-other', ok=False,
+                     input_text='secret-password\n')
+        self.assertEqual(self.calls(), [])
+
+    def test_local_installer_builds_before_disk_mutation(self):
+        config = self.init('metal', 'gaming', '--disk', '/dev/disk/by-id/virtio-test')
+        self.env['FAIL_COMMAND'] = 'build'
+        self.run_cli('installer', 'local', '--config', config, '--execute',
+                     '--confirm-disk', '/dev/disk/by-id/virtio-test', ok=False,
+                     input_text='secret-password\n')
+        self.assertEqual([call[0] for call in self.calls()], ['flake', 'eval', 'build'])
+
+    def test_local_installer_runs_guarded_sequence(self):
+        config = self.init('metal', 'gaming', '--disk', '/dev/disk/by-id/virtio-test')
+        self.run_cli('installer', 'local', '--config', config, '--execute',
+                     '--confirm-disk', '/dev/disk/by-id/virtio-test',
+                     input_text='secret-password\n')
+        self.assertEqual([call[0] for call in self.calls()],
+                         ['flake', 'eval', 'build', 'run', 'cp', 'nixos-install', 'nixos-enter'])
+        self.assertIn('--yes-wipe-all-disks', self.calls()[3])
+        self.assertTrue((self.install_root / 'etc/nox').is_dir())
 
 
 if __name__ == '__main__':

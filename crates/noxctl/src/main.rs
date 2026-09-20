@@ -8,7 +8,10 @@ use std::{
 };
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use nox_config::{example_config, load, Capability, Profile, Target};
+use nox_config::{
+    example_config, load, Bootloader, Capability, DesktopFlavour, Filesystem, GraphicsDriver,
+    Profile, Target,
+};
 
 #[derive(Debug, Parser)]
 #[command(name = "noxctl", version, about = "Control a declarative Nox system")]
@@ -35,6 +38,8 @@ enum CommandKind {
     Install(InstallArgs),
     /// Build the selected target image (WSL produces its tarball builder).
     Image(ImageArgs),
+    /// Launch the graphical installer or install the local machine with explicit guards.
+    Installer(InstallerArgs),
     /// Placeholder for safe activation.
     Apply(PathArgs),
     /// List local NixOS system generations.
@@ -88,6 +93,26 @@ struct InitArgs {
     profile: ProfileName,
     #[arg(long, value_enum, default_value_t = TargetName::Metal)]
     target: TargetName,
+    /// Desktop compositor. Desktop and gaming projects default to Hyprland.
+    #[arg(long, value_enum)]
+    flavour: Option<FlavourName>,
+    #[arg(long, value_enum, default_value_t = GraphicsName::Auto)]
+    graphics: GraphicsName,
+    #[arg(long, value_enum, default_value_t = BootloaderName::SystemdBoot)]
+    bootloader: BootloaderName,
+    #[arg(long, value_enum, default_value_t = FilesystemName::Btrfs)]
+    filesystem: FilesystemName,
+    /// Stable installation target. Only /dev/disk/by-id/... is accepted.
+    #[arg(long)]
+    disk: Option<String>,
+    #[arg(long, default_value = "nox")]
+    username: String,
+    #[arg(long, default_value = "en_US.UTF-8")]
+    locale: String,
+    #[arg(long, default_value = "UTC")]
+    timezone: String,
+    #[arg(long, default_value = "us")]
+    keymap: String,
 }
 
 #[derive(Debug, Args)]
@@ -99,6 +124,36 @@ struct ImageArgs {
 #[derive(Debug, Subcommand)]
 enum ImageCommand {
     Build(BuildArgs),
+}
+
+#[derive(Debug, Args)]
+struct InstallerArgs {
+    #[command(subcommand)]
+    command: InstallerCommand,
+}
+
+#[derive(Debug, Subcommand)]
+enum InstallerCommand {
+    /// Start the GTK installer wizard.
+    Gui {
+        /// Exercise generation and validation without touching a disk.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Install the current live system onto a local disk.
+    Local(LocalInstallArgs),
+}
+
+#[derive(Debug, Args)]
+struct LocalInstallArgs {
+    #[arg(short, long, default_value = "nox.toml")]
+    config: PathBuf,
+    /// Required acknowledgement that disk contents will be destroyed.
+    #[arg(long)]
+    execute: bool,
+    /// Must exactly match install.disk in nox.toml.
+    #[arg(long)]
+    confirm_disk: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -117,6 +172,35 @@ enum TargetName {
     Qcow2,
     Wsl,
     Oci,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum FlavourName {
+    None,
+    Hyprland,
+    Niri,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum GraphicsName {
+    Auto,
+    Amd,
+    Intel,
+    NvidiaOpen,
+    NvidiaProprietary,
+    Vm,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum BootloaderName {
+    SystemdBoot,
+    GrubEfi,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum FilesystemName {
+    Btrfs,
+    Ext4,
 }
 
 fn main() {
@@ -144,6 +228,16 @@ fn run() -> Result<(), Box<dyn Error>> {
         CommandKind::Image(ImageArgs { command: ImageCommand::Build(args) }) => {
             lifecycle::build(&args.config, args.dry_run, &args.out_link)
         }
+        CommandKind::Installer(InstallerArgs { command: InstallerCommand::Gui { dry_run } }) => {
+            lifecycle::installer_gui(dry_run)
+        }
+        CommandKind::Installer(InstallerArgs {
+            command: InstallerCommand::Local(args),
+        }) => lifecycle::install_local(
+            &args.config,
+            args.confirm_disk.as_deref(),
+            args.execute,
+        ),
         CommandKind::Apply(args) => future_command("apply", &args.config),
         CommandKind::Generations => lifecycle::generations(),
         CommandKind::Rollback => future_command("rollback", Path::new(".")),
@@ -165,15 +259,28 @@ fn init(args: InitArgs) -> Result<(), Box<dyn Error>> {
     let mut config = example_config();
     config.profile = args.profile.into();
     config.target = args.target.into();
-    if config.profile == Profile::Gaming {
-        config.capabilities.insert(Capability::Gaming);
-    }
-    if config.profile == Profile::Recovery {
-        config.capabilities.insert(Capability::Recovery);
-    }
-    if config.profile == Profile::Workspace {
-        config.capabilities = [Capability::Development].into_iter().collect();
-    }
+    config.capabilities = match config.profile {
+        Profile::Server => [Capability::Apps, Capability::RemoteManagement].into_iter().collect(),
+        Profile::Desktop => [Capability::Desktop, Capability::Development].into_iter().collect(),
+        Profile::Gaming => [Capability::Desktop, Capability::Gaming].into_iter().collect(),
+        Profile::Workspace => [Capability::Development].into_iter().collect(),
+        Profile::Recovery => [Capability::Recovery, Capability::RemoteManagement].into_iter().collect(),
+    };
+    config.desktop.flavour = Some(args.flavour.map(Into::into).unwrap_or_else(|| {
+        if matches!(config.profile, Profile::Desktop | Profile::Gaming) {
+            DesktopFlavour::Hyprland
+        } else {
+            DesktopFlavour::None
+        }
+    }));
+    config.hardware.graphics = args.graphics.into();
+    config.boot.loader = args.bootloader.into();
+    config.install.filesystem = args.filesystem.into();
+    config.install.disk = args.disk;
+    config.user.name = args.username;
+    config.locale.locale = args.locale;
+    config.locale.timezone = args.timezone;
+    config.locale.keymap = args.keymap;
     config.name = directory
         .file_name()
         .and_then(|name| name.to_str())
@@ -244,6 +351,47 @@ impl From<TargetName> for Target {
             TargetName::Qcow2 => Self::Qcow2,
             TargetName::Wsl => Self::Wsl,
             TargetName::Oci => Self::Oci,
+        }
+    }
+}
+
+impl From<FlavourName> for DesktopFlavour {
+    fn from(value: FlavourName) -> Self {
+        match value {
+            FlavourName::None => Self::None,
+            FlavourName::Hyprland => Self::Hyprland,
+            FlavourName::Niri => Self::Niri,
+        }
+    }
+}
+
+impl From<GraphicsName> for GraphicsDriver {
+    fn from(value: GraphicsName) -> Self {
+        match value {
+            GraphicsName::Auto => Self::Auto,
+            GraphicsName::Amd => Self::Amd,
+            GraphicsName::Intel => Self::Intel,
+            GraphicsName::NvidiaOpen => Self::NvidiaOpen,
+            GraphicsName::NvidiaProprietary => Self::NvidiaProprietary,
+            GraphicsName::Vm => Self::Vm,
+        }
+    }
+}
+
+impl From<BootloaderName> for Bootloader {
+    fn from(value: BootloaderName) -> Self {
+        match value {
+            BootloaderName::SystemdBoot => Self::SystemdBoot,
+            BootloaderName::GrubEfi => Self::GrubEfi,
+        }
+    }
+}
+
+impl From<FilesystemName> for Filesystem {
+    fn from(value: FilesystemName) -> Self {
+        match value {
+            FilesystemName::Btrfs => Self::Btrfs,
+            FilesystemName::Ext4 => Self::Ext4,
         }
     }
 }

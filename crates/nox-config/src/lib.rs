@@ -114,6 +114,170 @@ pub enum Capability {
     Recovery,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DesktopFlavour {
+    None,
+    Hyprland,
+    Niri,
+}
+
+impl DesktopFlavour {
+    pub const ALL: [&'static str; 3] = ["none", "hyprland", "niri"];
+}
+
+impl fmt::Display for DesktopFlavour {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::None => "none",
+            Self::Hyprland => "hyprland",
+            Self::Niri => "niri",
+        })
+    }
+}
+
+impl FromStr for DesktopFlavour {
+    type Err = ConfigError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "none" => Ok(Self::None),
+            "hyprland" => Ok(Self::Hyprland),
+            "niri" => Ok(Self::Niri),
+            other => Err(ConfigError::InvalidValue {
+                field: "desktop.flavour",
+                value: other.to_owned(),
+                expected: Self::ALL.join(", "),
+            }),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum GraphicsDriver {
+    #[default]
+    Auto,
+    Amd,
+    Intel,
+    NvidiaOpen,
+    NvidiaProprietary,
+    Vm,
+}
+
+impl fmt::Display for GraphicsDriver {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Auto => "auto",
+            Self::Amd => "amd",
+            Self::Intel => "intel",
+            Self::NvidiaOpen => "nvidia-open",
+            Self::NvidiaProprietary => "nvidia-proprietary",
+            Self::Vm => "vm",
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum Bootloader {
+    #[default]
+    SystemdBoot,
+    GrubEfi,
+}
+
+impl fmt::Display for Bootloader {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::SystemdBoot => "systemd-boot",
+            Self::GrubEfi => "grub-efi",
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum Filesystem {
+    #[default]
+    Btrfs,
+    Ext4,
+}
+
+impl fmt::Display for Filesystem {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Btrfs => "btrfs",
+            Self::Ext4 => "ext4",
+        })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(deny_unknown_fields)]
+pub struct DesktopSettings {
+    /// `None` means a legacy configuration omitted this setting. Desktop and
+    /// gaming profiles resolve that omission to Hyprland.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flavour: Option<DesktopFlavour>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(deny_unknown_fields)]
+pub struct HardwareSettings {
+    #[serde(default)]
+    pub graphics: GraphicsDriver,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(deny_unknown_fields)]
+pub struct BootSettings {
+    #[serde(default)]
+    pub loader: Bootloader,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(deny_unknown_fields)]
+pub struct InstallSettings {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disk: Option<String>,
+    #[serde(default)]
+    pub filesystem: Filesystem,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct LocaleSettings {
+    #[serde(default = "default_locale")]
+    pub locale: String,
+    #[serde(default = "default_timezone")]
+    pub timezone: String,
+    #[serde(default = "default_keymap")]
+    pub keymap: String,
+}
+
+impl Default for LocaleSettings {
+    fn default() -> Self {
+        Self {
+            locale: default_locale(),
+            timezone: default_timezone(),
+            keymap: default_keymap(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct UserSettings {
+    #[serde(default = "default_username")]
+    pub name: String,
+}
+
+impl Default for UserSettings {
+    fn default() -> Self {
+        Self { name: default_username() }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct NixSettings {
@@ -143,10 +307,32 @@ pub struct NoxConfig {
     #[serde(default)]
     pub capabilities: BTreeSet<Capability>,
     #[serde(default)]
+    pub desktop: DesktopSettings,
+    #[serde(default)]
+    pub hardware: HardwareSettings,
+    #[serde(default)]
+    pub boot: BootSettings,
+    #[serde(default)]
+    pub install: InstallSettings,
+    #[serde(default)]
+    pub locale: LocaleSettings,
+    #[serde(default)]
+    pub user: UserSettings,
+    #[serde(default)]
     pub nix: NixSettings,
 }
 
 impl NoxConfig {
+    pub fn desktop_flavour(&self) -> DesktopFlavour {
+        self.desktop.flavour.unwrap_or_else(|| {
+            if matches!(self.profile, Profile::Desktop | Profile::Gaming) {
+                DesktopFlavour::Hyprland
+            } else {
+                DesktopFlavour::None
+            }
+        })
+    }
+
     pub fn validate(&self) -> Result<(), Vec<String>> {
         let mut errors = Vec::new();
         if self.schema_version != CURRENT_SCHEMA_VERSION {
@@ -182,6 +368,41 @@ impl NoxConfig {
             {
                 errors.push(format!("extra module must be a relative .nix path inside the machine directory: {module}"));
             }
+        }
+        if !valid_username(&self.user.name) {
+            errors.push(
+                "user.name must be 1-32 lowercase letters/digits/hyphens/underscores, start with a letter or underscore, and not be root"
+                    .to_owned(),
+            );
+        }
+        if !valid_setting(&self.locale.locale, false) {
+            errors.push("locale.locale contains unsupported characters".to_owned());
+        }
+        if !valid_setting(&self.locale.timezone, true) {
+            errors.push("locale.timezone contains unsupported characters".to_owned());
+        }
+        if !valid_setting(&self.locale.keymap, false) {
+            errors.push("locale.keymap contains unsupported characters".to_owned());
+        }
+        if let Some(disk) = &self.install.disk {
+            if !disk.starts_with("/dev/disk/by-id/")
+                || disk.len() <= "/dev/disk/by-id/".len()
+                || disk.bytes().any(|byte| byte.is_ascii_whitespace())
+                || disk.contains("..")
+                || disk.contains("REPLACE")
+            {
+                errors.push(
+                    "install.disk must be a concrete /dev/disk/by-id/... device".to_owned(),
+                );
+            }
+            if self.target != Target::Metal {
+                errors.push("install.disk is only valid for the metal target".to_owned());
+            }
+        }
+        if matches!(self.target, Target::Wsl | Target::Oci)
+            && self.desktop_flavour() != DesktopFlavour::None
+        {
+            errors.push("wsl and oci targets do not support desktop.flavour".to_owned());
         }
         if self.target == Target::Oci
             && self.capabilities.iter().any(|c| {
@@ -251,8 +472,52 @@ pub fn example_config() -> NoxConfig {
         profile: Profile::Server,
         target: Target::Metal,
         capabilities: [Capability::Apps, Capability::RemoteManagement].into_iter().collect(),
+        desktop: DesktopSettings { flavour: Some(DesktopFlavour::None) },
+        hardware: HardwareSettings::default(),
+        boot: BootSettings::default(),
+        install: InstallSettings::default(),
+        locale: LocaleSettings::default(),
+        user: UserSettings::default(),
         nix: NixSettings::default(),
     }
+}
+
+fn default_locale() -> String {
+    "en_US.UTF-8".to_owned()
+}
+
+fn default_timezone() -> String {
+    "UTC".to_owned()
+}
+
+fn default_keymap() -> String {
+    "us".to_owned()
+}
+
+fn default_username() -> String {
+    "nox".to_owned()
+}
+
+fn valid_username(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    !value.is_empty()
+        && value != "root"
+        && value.len() <= 32
+        && (bytes[0].is_ascii_lowercase() || bytes[0] == b'_')
+        && bytes
+            .iter()
+            .copied()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'_' | b'-'))
+}
+
+fn valid_setting(value: &str, allow_slash: bool) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric()
+                || matches!(byte, b'_' | b'-' | b'.' | b'+' | b'@')
+                || (allow_slash && byte == b'/')
+        })
 }
 #[cfg(test)]
 mod tests {
@@ -289,14 +554,45 @@ mod tests {
 
     #[test]
     fn rejects_incompatible_target() {
-        let config = NoxConfig {
-            schema_version: CURRENT_SCHEMA_VERSION,
-            name: "bad".to_owned(),
-            profile: Profile::Server,
-            target: Target::Wsl,
-            capabilities: BTreeSet::new(),
-            nix: NixSettings::default(),
-        };
+        let mut config = example_config();
+        config.target = Target::Wsl;
         assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn legacy_desktop_defaults_to_hyprland() {
+        let config = parse(
+            r#"schema_version = 1
+name = "legacy-desktop"
+profile = "desktop"
+target = "iso"
+capabilities = ["desktop"]
+"#,
+        )
+        .expect("legacy desktop configuration parses");
+        assert_eq!(config.desktop_flavour(), DesktopFlavour::Hyprland);
+    }
+
+    #[test]
+    fn rejects_unstable_install_disk() {
+        for disk in ["/dev/sda", "/dev/disk/by-id/", "/dev/disk/by-id/../sda"] {
+            let mut config = example_config();
+            config.install.disk = Some(disk.to_owned());
+            assert!(config.validate().is_err(), "{disk}");
+        }
+    }
+
+    #[test]
+    fn round_trips_desktop_install_settings() {
+        let mut config = example_config();
+        config.profile = Profile::Gaming;
+        config.capabilities.insert(Capability::Gaming);
+        config.desktop.flavour = Some(DesktopFlavour::Niri);
+        config.hardware.graphics = GraphicsDriver::Amd;
+        config.boot.loader = Bootloader::GrubEfi;
+        config.install.disk = Some("/dev/disk/by-id/virtio-test".to_owned());
+        config.install.filesystem = Filesystem::Ext4;
+        let text = toml::to_string_pretty(&config).expect("configuration serializes");
+        assert_eq!(parse(&text).expect("configuration parses"), config);
     }
 }

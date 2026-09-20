@@ -2,18 +2,23 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - "recovery/**"
     paths:
-      - ".github/workflows/ci.yml"
+      - ".github/workflows/**"
       - "Cargo.lock"
       - "Cargo.toml"
       - "crates/**"
       - "flake.lock"
       - "flake.nix"
       - "nix/**"
+      - "installer/**"
       - "examples/**"
       - "scripts/**"
       - "tests/**"
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -35,6 +40,7 @@ jobs:
       - run: cargo test --workspace --locked
       - run: cargo build -p noxctl --locked
       - run: python3 -m unittest discover -s tests/cli -v
+      - run: python3 -m py_compile installer/nox-installer.py tests/boot_iso.py tests/boot_qcow2.py
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
   nix:

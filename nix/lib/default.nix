@@ -4,9 +4,61 @@ let
   readConfig =
     configFile:
     let
-      c = builtins.fromTOML (builtins.readFile configFile);
+      raw = builtins.fromTOML (builtins.readFile configFile);
+      desktop = raw.desktop or { };
+      hardware = raw.hardware or { };
+      boot = raw.boot or { };
+      install = raw.install or { };
+      locale = raw.locale or { };
+      user = raw.user or { };
+      c = raw // {
+        desktop = desktop // {
+          flavour =
+            desktop.flavour or
+              (if builtins.elem raw.profile [
+                "desktop"
+                "gaming"
+              ] then
+                "hyprland"
+              else
+                "none");
+        };
+        hardware = hardware // {
+          graphics = hardware.graphics or "auto";
+        };
+        boot = boot // {
+          loader = boot.loader or "systemd-boot";
+        };
+        install = install // {
+          disk = install.disk or null;
+          filesystem = install.filesystem or "btrfs";
+        };
+        locale = locale // {
+          locale = locale.locale or "en_US.UTF-8";
+          timezone = locale.timezone or "UTC";
+          keymap = locale.keymap or "us";
+        };
+        user = user // {
+          name = user.name or "nox";
+        };
+      };
       caps = c.capabilities or [ ];
       validName = builtins.match "[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?" c.name != null;
+      keysOnly = value: allowed: lib.all (key: builtins.elem key allowed) (builtins.attrNames value);
+      validUser =
+        builtins.isString c.user.name
+        && builtins.match "[a-z_][a-z0-9_-]*" c.user.name != null
+        && builtins.stringLength c.user.name <= 32
+        && c.user.name != "root";
+      validDisk =
+        c.install.disk == null
+        || (
+          builtins.isString c.install.disk
+          && lib.hasPrefix "/dev/disk/by-id/" c.install.disk
+          && c.install.disk != "/dev/disk/by-id/"
+          && !(lib.hasInfix ".." c.install.disk)
+          && !(lib.hasInfix "REPLACE" c.install.disk)
+        );
     in
     assert lib.assertMsg (lib.all (
       key:
@@ -16,9 +68,28 @@ let
         "profile"
         "target"
         "capabilities"
+        "desktop"
+        "hardware"
+        "boot"
+        "install"
+        "locale"
+        "user"
         "nix"
       ]
-    ) (builtins.attrNames c)) "Unknown Nox field";
+    ) (builtins.attrNames raw)) "Unknown Nox field";
+    assert lib.assertMsg (keysOnly desktop [ "flavour" ]) "Unknown desktop setting";
+    assert lib.assertMsg (keysOnly hardware [ "graphics" ]) "Unknown hardware setting";
+    assert lib.assertMsg (keysOnly boot [ "loader" ]) "Unknown boot setting";
+    assert lib.assertMsg (keysOnly install [
+      "disk"
+      "filesystem"
+    ]) "Unknown install setting";
+    assert lib.assertMsg (keysOnly locale [
+      "locale"
+      "timezone"
+      "keymap"
+    ]) "Unknown locale setting";
+    assert lib.assertMsg (keysOnly user [ "name" ]) "Unknown user setting";
     assert lib.assertMsg (lib.all (
       key:
       builtins.elem key [
@@ -53,6 +124,37 @@ let
       "wsl"
       "oci"
     ]) "Unknown target";
+    assert lib.assertMsg (builtins.elem c.desktop.flavour [
+      "none"
+      "hyprland"
+      "niri"
+    ]) "Unknown desktop flavour";
+    assert lib.assertMsg (builtins.elem c.hardware.graphics [
+      "auto"
+      "amd"
+      "intel"
+      "nvidia-open"
+      "nvidia-proprietary"
+      "vm"
+    ]) "Unknown graphics driver";
+    assert lib.assertMsg (builtins.elem c.boot.loader [
+      "systemd-boot"
+      "grub-efi"
+    ]) "Unknown bootloader";
+    assert lib.assertMsg (builtins.elem c.install.filesystem [
+      "btrfs"
+      "ext4"
+    ]) "Unknown filesystem";
+    assert lib.assertMsg validDisk "Install disk must be a concrete /dev/disk/by-id/... device";
+    assert lib.assertMsg (c.install.disk == null || c.target == "metal") "Install disk requires metal target";
+    assert lib.assertMsg validUser "Invalid primary username";
+    assert lib.assertMsg (
+      !(builtins.elem c.target [
+        "wsl"
+        "oci"
+      ])
+      || c.desktop.flavour == "none"
+    ) "WSL and OCI do not support desktop flavours";
     assert lib.assertMsg (lib.all (
       x:
       builtins.elem x [
@@ -105,14 +207,33 @@ let
     in
     inputs.nixpkgs.lib.nixosSystem {
       inherit system;
+      specialArgs = { inherit inputs; };
       modules = [
+        ../modules/core
+        ../modules/boot
+        ../modules/desktop
+        ../modules/gaming
+        ../modules/hardware
+        ../modules/user
         ../profiles/${c.profile}.nix
         ../targets/${c.target}.nix
         ../capabilities
         ({ ... }: {
           networking.hostName = c.name;
           environment.systemPackages = [ inputs.self.packages.${system}.noxctl ];
-          nox.capabilities = c.capabilities or [ ];
+          nox = {
+            capabilities = c.capabilities or [ ];
+            desktop.flavour = c.desktop.flavour;
+            hardware.graphics = c.hardware.graphics;
+            boot.loader = c.boot.loader;
+            install = {
+              inherit (c.install) disk filesystem;
+            };
+            locale = {
+              inherit (c.locale) locale timezone keymap;
+            };
+            user.name = c.user.name;
+          };
           nix.settings.experimental-features = [
             "nix-command"
             "flakes"
@@ -122,7 +243,10 @@ let
         })
       ]
       ++ lib.optionals (c.target == "wsl") [ inputs.nixos-wsl.nixosModules.default ]
-      ++ lib.optionals (c.target == "metal") [ inputs.disko.nixosModules.disko ]
+      ++ lib.optionals (c.target == "metal") [
+        inputs.disko.nixosModules.disko
+        ../modules/install
+      ]
       ++ map (p: builtins.toPath "${toString (builtins.dirOf configFile)}/${p}") (
         c.nix.extra_modules or [ ]
       )

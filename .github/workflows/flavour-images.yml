@@ -1,0 +1,191 @@
+name: Flavour images
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      artifact:
+        description: Artifact set to rebuild
+        type: choice
+        required: true
+        default: all
+        options:
+          - all
+          - hyprland
+          - niri
+          - wsl
+
+permissions:
+  actions: write
+  contents: write
+
+concurrency:
+  group: flavour-images
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-24.04
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - id: source
+        env:
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: echo "sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Remove stale Actions artifacts
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const artifacts = await github.paginate(
+              github.rest.actions.listArtifactsForRepo,
+              { owner: context.repo.owner, repo: context.repo.repo, per_page: 100 },
+            );
+            for (const artifact of artifacts) {
+              await github.rest.actions.deleteArtifact({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                artifact_id: artifact.id,
+              });
+            }
+            core.info(`Deleted ${artifacts.length} stale Actions artifact(s)`);
+
+      - name: Enforce one prerelease and clean selected assets
+        uses: actions/github-script@v7
+        env:
+          SELECTED: ${{ inputs.artifact || 'all' }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          RELEASE_TAG: v0.2.0-alpha.1
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const selected = process.env.SELECTED;
+            const tag = process.env.RELEASE_TAG;
+            const releases = await github.paginate(
+              github.rest.repos.listReleases,
+              { owner, repo, per_page: 100 },
+            );
+            for (const release of releases.filter((item) => item.prerelease)) {
+              if (selected === 'all' || release.tag_name !== tag) {
+                await github.rest.repos.deleteRelease({ owner, repo, release_id: release.id });
+                core.info(`Deleted prerelease ${release.tag_name}`);
+                continue;
+              }
+              const prefix = `nox-${selected}-`;
+              for (const asset of release.assets.filter((item) => item.name.startsWith(prefix))) {
+                await github.rest.repos.deleteReleaseAsset({ owner, repo, asset_id: asset.id });
+                core.info(`Deleted stale asset ${asset.name}`);
+              }
+            }
+            const ref = `tags/${tag}`;
+            try {
+              await github.rest.git.getRef({ owner, repo, ref });
+              await github.rest.git.updateRef({
+                owner,
+                repo,
+                ref,
+                sha: process.env.SOURCE_SHA,
+                force: true,
+              });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              await github.rest.git.createRef({
+                owner,
+                repo,
+                ref: `refs/${ref}`,
+                sha: process.env.SOURCE_SHA,
+              });
+            }
+
+  build:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: true
+      max-parallel: 1
+      matrix:
+        artifact:
+          - hyprland
+          - niri
+          - wsl
+    steps:
+      - name: Select artifact
+        id: selected
+        env:
+          REQUESTED: ${{ inputs.artifact || 'all' }}
+          ARTIFACT: ${{ matrix.artifact }}
+        run: |
+          if [[ "$REQUESTED" == all || "$REQUESTED" == "$ARTIFACT" ]]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.selected.outputs.build == 'true'
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
+
+      - uses: cachix/install-nix-action@v31
+        if: steps.selected.outputs.build == 'true'
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Build and boot-test ISO
+        if: steps.selected.outputs.build == 'true' && matrix.artifact != 'wsl'
+        env:
+          FLAVOUR: ${{ matrix.artifact }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+        run: |
+          mkdir -p release
+          nix build --no-update-lock-file ".#${FLAVOUR}-iso" --out-link result-iso
+          source_iso="$(find -L result-iso/iso -maxdepth 1 -type f -name '*.iso' -print -quit)"
+          test -n "$source_iso"
+          image="release/nox-${FLAVOUR}-x86_64-linux.iso"
+          cp -- "$source_iso" "$image"
+          test "$(stat --format=%s "$image")" -gt 1073741824
+          nix run --no-update-lock-file .#iso-smoke -- "$image" --expect-flavour "$FLAVOUR" --timeout 900 --log iso-boot-console.log
+          image_sha256="$(sha256sum "$image" | cut -d' ' -f1)"
+          printf '%s  %s\n' "$image_sha256" "$(basename "$image")" > "$image.sha256"
+          jq -n --arg commit "$SOURCE_SHA" --arg artifact "$FLAVOUR-iso" --arg architecture "x86_64-linux" --arg image_sha256 "$image_sha256" --arg boot_evidence_sha256 "$(sha256sum iso-boot-console.log | cut -d' ' -f1)" --arg flake_lock_sha256 "$(sha256sum flake.lock | cut -d' ' -f1)" --arg cargo_lock_sha256 "$(sha256sum Cargo.lock | cut -d' ' -f1)" '{commit: $commit, artifact: $artifact, architecture: $architecture, image_sha256: $image_sha256, uefi_boot_test: "passed", boot_evidence_sha256: $boot_evidence_sha256, flake_lock_sha256: $flake_lock_sha256, cargo_lock_sha256: $cargo_lock_sha256}' > "release/nox-${FLAVOUR}-x86_64-linux.provenance.json"
+
+      - name: Build and validate WSL image
+        if: steps.selected.outputs.build == 'true' && matrix.artifact == 'wsl'
+        env:
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+        run: |
+          mkdir -p release
+          nix build --no-update-lock-file .#wsl --out-link result-wsl
+          image="release/nox-wsl-x86_64-linux.wsl"
+          sudo ./result-wsl/bin/nixos-wsl-tarball-builder "$PWD/$image"
+          test -s "$image"
+          test "$(stat --format=%s "$image")" -gt 104857600
+          tar -tzf "$image" | grep -qx './etc/wsl-distribution.conf'
+          tar -tzf "$image" | grep -qx './etc/nixos/configuration.nix'
+          image_sha256="$(sha256sum "$image" | cut -d' ' -f1)"
+          printf '%s  %s\n' "$image_sha256" "$(basename "$image")" > "$image.sha256"
+          jq -n --arg commit "$SOURCE_SHA" --arg artifact "wsl" --arg architecture "x86_64-linux" --arg image_sha256 "$image_sha256" --arg flake_lock_sha256 "$(sha256sum flake.lock | cut -d' ' -f1)" --arg cargo_lock_sha256 "$(sha256sum Cargo.lock | cut -d' ' -f1)" '{commit: $commit, artifact: $artifact, architecture: $architecture, image_sha256: $image_sha256, archive_validation: "passed", runtime_test: "requires Windows WSL2", flake_lock_sha256: $flake_lock_sha256, cargo_lock_sha256: $cargo_lock_sha256}' > release/nox-wsl-x86_64-linux.provenance.json
+
+      - name: Publish to the single prerelease
+        if: steps.selected.outputs.build == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.2.0-alpha.1
+          name: Nox v0.2.0-alpha.1
+          prerelease: true
+          target_commitish: ${{ needs.prepare.outputs.source_sha }}
+          body: |
+            Reproducible Nox preview images built from the current main branch.
+            Hyprland and Niri ISOs are UEFI-smoke-tested in CI. WSL is archive-
+            validated in CI and still requires a separate Windows WSL2 runtime test.
+          files: release/*
+          fail_on_unmatched_files: true
+          overwrite_files: true
