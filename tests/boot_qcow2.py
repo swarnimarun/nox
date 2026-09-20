@@ -20,6 +20,7 @@ if (not args.image.is_file() or not args.firmware.is_file() or not variables.is_
 firmware_state = tempfile.TemporaryDirectory(prefix='nox-ovmf-')
 writable_variables = Path(firmware_state.name) / 'OVMF_VARS.fd'
 shutil.copy2(variables, writable_variables)
+writable_variables.chmod(0o600)
 command = ['qemu-system-x86_64', '-machine', 'q35', '-accel', 'tcg', '-m', '2048', '-smp', '2',
            '-drive', f'if=pflash,format=raw,readonly=on,file={args.firmware}',
            '-drive', f'if=pflash,format=raw,file={writable_variables}',
