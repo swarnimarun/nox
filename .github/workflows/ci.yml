@@ -57,3 +57,18 @@ jobs:
           nix fmt .
           git diff --exit-code
       - run: nix flake check --no-update-lock-file --show-trace
+      - name: Validate generated project and dotfiles flakes
+        run: |
+          cargo run --locked -p noxctl -- dotfiles init "$RUNNER_TEMP/nox-dotfiles" --username nox --no-lock
+          cargo run --locked -p noxctl -- setup "$RUNNER_TEMP/nox-machine" \
+            --source "path:$GITHUB_WORKSPACE" \
+            --profile desktop \
+            --target qcow2 \
+            --flavour niri \
+            --dotfiles-flake "path:$RUNNER_TEMP/nox-dotfiles"
+          test "$(nix eval --no-update-lock-file --raw \
+            "path:$RUNNER_TEMP/nox-machine#nixosConfigurations.nox.config.home-manager.users.nox.home.username")" = nox
+          nix eval --no-update-lock-file --raw \
+            "path:$RUNNER_TEMP/nox-machine#nixosConfigurations.nox.config.system.build.toplevel.drvPath"
+          cargo run --locked -p noxctl -- upgrade list \
+            --config "$RUNNER_TEMP/nox-machine/nox.toml"
