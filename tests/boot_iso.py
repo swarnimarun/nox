@@ -27,6 +27,7 @@ if (
 firmware_state = tempfile.TemporaryDirectory(prefix="nox-ovmf-")
 writable_variables = Path(firmware_state.name) / "OVMF_VARS.fd"
 shutil.copy2(variables, writable_variables)
+writable_variables.chmod(0o600)
 
 marker = f"NOX_LIVE_READY flavour={args.expect_flavour}".encode()
 command = [
