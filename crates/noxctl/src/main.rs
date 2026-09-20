@@ -374,10 +374,7 @@ fn initialize(args: InitArgs, lock_after: bool) -> Result<(), Box<dyn Error>> {
     fs::create_dir_all(directory.join("modules"))?;
     lifecycle::write_new(&path, &toml::to_string_pretty(&config)?)?;
     lifecycle::write_new(&directory.join("flake.nix"), &flake)?;
-    lifecycle::write_new(
-        &directory.join("modules/system.nix"),
-        lifecycle::machine_module(),
-    )?;
+    lifecycle::write_new(&directory.join("modules/system.nix"), lifecycle::machine_module())?;
     println!("created {}", path.display());
     if lock_after {
         lifecycle::lock(&path)?;
@@ -432,11 +429,7 @@ fn edit_module(args: ModuleEditArgs, add: bool) -> Result<(), Box<dyn Error>> {
         }
     }
     lifecycle::write_config(&args.config, &config)?;
-    println!(
-        "{} {}",
-        if add { "registered" } else { "unregistered" },
-        args.module
-    );
+    println!("{} {}", if add { "registered" } else { "unregistered" }, args.module);
     Ok(())
 }
 

@@ -38,10 +38,8 @@ pub fn invoke(program: &str, args: &[String], execute: bool) -> Result<()> {
 }
 
 fn nix_arguments(args: &[String]) -> Vec<String> {
-    let mut command = vec![
-        "--extra-experimental-features".to_owned(),
-        "nix-command flakes".to_owned(),
-    ];
+    let mut command =
+        vec!["--extra-experimental-features".to_owned(), "nix-command flakes".to_owned()];
     command.extend_from_slice(args);
     command
 }
@@ -93,15 +91,7 @@ pub fn lock_flake(root: &Path) -> Result<()> {
 pub fn upgrade_list(config: &Path) -> Result<()> {
     let root = project(config)?;
     require_lock(&root)?;
-    invoke_nix(
-        &[
-            "flake".into(),
-            "update".into(),
-            "--dry-run".into(),
-            reference(&root),
-        ],
-        true,
-    )
+    invoke_nix(&["flake".into(), "update".into(), "--dry-run".into(), reference(&root)], true)
 }
 
 pub fn upgrade_apply(config: &Path) -> Result<()> {
@@ -406,8 +396,7 @@ fn replace_file(path: &Path, contents: &[u8]) -> Result<()> {
     let name = path.file_name().and_then(|value| value.to_str()).ok_or("invalid file name")?;
     let temporary = path.with_file_name(format!(".{name}.{}.tmp", std::process::id()));
     let result = (|| {
-        let mut file =
-            fs::OpenOptions::new().write(true).create_new(true).open(&temporary)?;
+        let mut file = fs::OpenOptions::new().write(true).create_new(true).open(&temporary)?;
         file.write_all(contents)?;
         file.sync_all()?;
         fs::rename(&temporary, path)?;
@@ -548,9 +537,6 @@ mod tests {
     #[test]
     fn nix_commands_enable_required_experimental_features() {
         let args = nix_arguments(&["flake".to_owned(), "lock".to_owned()]);
-        assert_eq!(
-            &args[..2],
-            &["--extra-experimental-features", "nix-command flakes"]
-        );
+        assert_eq!(&args[..2], &["--extra-experimental-features", "nix-command flakes"]);
     }
 }
