@@ -205,6 +205,7 @@ let
     {
       configFile,
       system ? "x86_64-linux",
+      extraInputs ? { },
       extraModules ? [ ],
     }:
     let
@@ -212,7 +213,9 @@ let
     in
     inputs.nixpkgs.lib.nixosSystem {
       inherit system;
-      specialArgs = { inherit inputs; };
+      specialArgs = {
+        inputs = extraInputs // inputs;
+      };
       modules = [
         ../modules/core
         ../modules/boot

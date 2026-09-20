@@ -19,11 +19,17 @@ class Lifecycle(unittest.TestCase):
         self.log = self.root / 'calls.jsonl'
         fake = self.bin / 'nix'
         fake.write_text('''#!/usr/bin/env python3
-import json, os, sys
-with open(os.environ['CALL_LOG'], 'a') as f: f.write(json.dumps(sys.argv[1:]) + '\\n')
-if sys.argv[1:3] == ['flake', 'archive']: print('{\"path\":\"/nix/store/frozen-nox\"}')
-if sys.argv[1] == 'eval': print(os.environ.get('DISKS', '{"main":{"device":"/dev/disk/by-id/virtio-test"}}'))
-if sys.argv[1] == os.environ.get('FAIL_COMMAND'): sys.exit(23)
+import json, os, pathlib, sys
+args = sys.argv[1:]
+if args[:2] == ['--extra-experimental-features', 'nix-command flakes']: args = args[2:]
+with open(os.environ['CALL_LOG'], 'a') as f: f.write(json.dumps(args) + '\\n')
+if args[:2] == ['flake', 'archive']: print('{\\"path\\":\\"/nix/store/frozen-nox\\"}')
+if args and args[0] == 'eval': print(os.environ.get('DISKS', '{"main":{"device":"/dev/disk/by-id/virtio-test"}}'))
+if args[:2] == ['flake', 'lock']:
+    pathlib.Path(args[-1].removeprefix('path:')).joinpath('flake.lock').write_text('{}')
+if args[:2] == ['flake', 'update'] and os.environ.get('UPDATE_LOCK'):
+    pathlib.Path(os.environ['UPDATE_LOCK']).write_text('updated')
+if args and args[0] == os.environ.get('FAIL_COMMAND'): sys.exit(23)
 ''')
         fake.chmod(0o755)
         helper = '''#!/usr/bin/env python3
@@ -74,6 +80,56 @@ if name == 'nixos-enter': sys.stdin.read()
         self.assertEqual(parsed['install']['filesystem'], 'ext4')
         self.assertEqual(parsed['install']['disk'], '/dev/disk/by-id/virtio-test')
         self.assertEqual(parsed['user']['name'], 'player')
+
+    def test_setup_locks_and_scaffolds_custom_module(self):
+        self.run_cli('setup', self.project, '--target', 'qcow2', '--profile', 'desktop')
+        self.assertTrue((self.project / 'flake.lock').is_file())
+        self.assertTrue((self.project / 'modules/system.nix').is_file())
+        self.assertEqual(self.calls()[0][:2], ['flake', 'lock'])
+
+    def test_init_can_attach_dotfiles_flake(self):
+        self.run_cli('init', self.project, '--dotfiles-flake', 'github:example/dotfiles')
+        flake = (self.project / 'flake.nix').read_text()
+        self.assertIn('inputs.dotfiles.url = "github:example/dotfiles"', flake)
+        self.assertIn('nixosModules.default', flake)
+
+    def test_module_registration_only_updates_toml(self):
+        import tomllib
+        config = self.init()
+        extra = self.project / 'modules/extra.nix'
+        extra.write_text('{ pkgs, ... }: { environment.systemPackages = [ pkgs.hello ]; }\n')
+        self.run_cli('module', 'add', '--config', config, 'modules/extra.nix')
+        parsed = tomllib.loads(config.read_text())
+        self.assertIn('modules/extra.nix', parsed['nix']['extra_modules'])
+        self.run_cli('module', 'list', '--config', config)
+        self.run_cli('module', 'remove', '--config', config, 'modules/extra.nix')
+        parsed = tomllib.loads(config.read_text())
+        self.assertNotIn('modules/extra.nix', parsed['nix']['extra_modules'])
+        self.assertTrue(extra.is_file())
+
+    def test_upgrade_list_is_dry_run(self):
+        config = self.init()
+        self.run_cli('upgrade', 'list', '--config', config)
+        self.assertIn('--dry-run', self.calls()[0])
+        self.assertEqual((self.project / 'flake.lock').read_text(), '{}')
+
+    def test_failed_upgrade_restores_lock(self):
+        config = self.init()
+        lock = self.project / 'flake.lock'
+        lock.write_text('original')
+        self.env['UPDATE_LOCK'] = str(lock)
+        self.env['FAIL_COMMAND'] = 'build'
+        self.run_cli('upgrade', 'apply', '--config', config, ok=False)
+        self.assertEqual(lock.read_text(), 'original')
+        self.assertEqual([call[0] for call in self.calls()], ['flake', 'build'])
+
+    def test_dotfiles_init_creates_git_ready_home_manager_flake(self):
+        dotfiles = self.root / 'dotfiles'
+        self.run_cli('dotfiles', 'init', dotfiles, '--username', 'alice', '--no-lock')
+        self.assertIn('home-manager', (dotfiles / 'flake.nix').read_text())
+        self.assertIn('homeDirectory = "/home/alice"', (dotfiles / 'home.nix').read_text())
+        self.assertTrue((dotfiles / '.gitignore').is_file())
+        self.assertEqual(self.calls(), [])
 
     def test_archive_failure_never_evaluates_or_installs(self):
         config = self.init()

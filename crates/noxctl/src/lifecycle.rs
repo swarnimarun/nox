@@ -1,4 +1,4 @@
-use nox_config::{load, Target};
+use nox_config::{load, NoxConfig, Target};
 use std::{
     env,
     error::Error,
@@ -37,6 +37,25 @@ pub fn invoke(program: &str, args: &[String], execute: bool) -> Result<()> {
     Ok(())
 }
 
+fn nix_arguments(args: &[String]) -> Vec<String> {
+    let mut command = vec![
+        "--extra-experimental-features".to_owned(),
+        "nix-command flakes".to_owned(),
+    ];
+    command.extend_from_slice(args);
+    command
+}
+
+fn nix_command() -> Command {
+    let mut command = Command::new("nix");
+    command.args(["--extra-experimental-features", "nix-command flakes"]);
+    command
+}
+
+fn invoke_nix(args: &[String], execute: bool) -> Result<()> {
+    invoke("nix", &nix_arguments(args), execute)
+}
+
 pub fn require_lock(root: &Path) -> Result<()> {
     if !root.join("flake.lock").is_file() {
         return Err("flake.lock is missing; run noxctl lock --config PATH/nox.toml and review/commit the lock before building".into());
@@ -55,7 +74,7 @@ pub fn build(config: &Path, dry_run: bool, out_link: &Path) -> Result<()> {
         "--out-link".into(),
         out_link.display().to_string(),
     ];
-    invoke("nix", &args, !dry_run)?;
+    invoke_nix(&args, !dry_run)?;
     if c.target == Target::Wsl {
         println!("WSL output is a tarball builder. Run sudo {}/bin/nixos-wsl-tarball-builder ./nox.wsl, then import on Windows.", out_link.display());
     }
@@ -64,7 +83,56 @@ pub fn build(config: &Path, dry_run: bool, out_link: &Path) -> Result<()> {
 
 pub fn lock(config: &Path) -> Result<()> {
     let root = project(config)?;
-    invoke("nix", &["flake".into(), "lock".into(), reference(&root)], true)
+    lock_flake(&root)
+}
+
+pub fn lock_flake(root: &Path) -> Result<()> {
+    invoke_nix(&["flake".into(), "lock".into(), reference(root)], true)
+}
+
+pub fn upgrade_list(config: &Path) -> Result<()> {
+    let root = project(config)?;
+    require_lock(&root)?;
+    invoke_nix(
+        &[
+            "flake".into(),
+            "update".into(),
+            "--dry-run".into(),
+            reference(&root),
+        ],
+        true,
+    )
+}
+
+pub fn upgrade_apply(config: &Path) -> Result<()> {
+    let root = project(config)?;
+    require_lock(&root)?;
+    let lock_path = root.join("flake.lock");
+    let previous = fs::read(&lock_path)?;
+    let result = (|| {
+        invoke_nix(&["flake".into(), "update".into(), reference(&root)], true)?;
+        invoke_nix(
+            &[
+                "build".into(),
+                "--no-update-lock-file".into(),
+                "--no-link".into(),
+                format!(
+                    "{}#nixosConfigurations.nox.config.system.build.toplevel",
+                    reference(&root)
+                ),
+            ],
+            true,
+        )
+    })();
+    if let Err(error) = result {
+        replace_file(&lock_path, &previous)?;
+        return Err(format!(
+            "upgrade validation failed and the previous flake.lock was restored: {error}"
+        )
+        .into());
+    }
+    println!("upgrade validated; review and commit flake.lock");
+    Ok(())
 }
 
 pub fn install(
@@ -100,7 +168,7 @@ pub fn install(
         host.into(),
     ];
     if !execute {
-        return invoke("nix", &args, false);
+        return invoke_nix(&args, false);
     }
     if confirm_host != Some(host) {
         return Err("--confirm-host must exactly match --host".into());
@@ -124,7 +192,7 @@ pub fn install(
         ],
         true,
     )?;
-    invoke("nix", &args, true)
+    invoke_nix(&args, true)
 }
 
 pub fn installer_gui(dry_run: bool) -> Result<()> {
@@ -221,7 +289,7 @@ pub fn install_local(config: &Path, confirm_disk: Option<&str>, execute: bool) -
 }
 
 fn archive_flake(flake: &str) -> Result<String> {
-    let archived = Command::new("nix")
+    let archived = nix_command()
         .args(["flake", "archive", "--json", "--no-update-lock-file", flake])
         .output()?;
     if !archived.status.success() {
@@ -237,7 +305,7 @@ fn archive_flake(flake: &str) -> Result<String> {
 }
 
 fn verify_single_disk(flake: &str, disk: &str) -> Result<()> {
-    let output = Command::new("nix")
+    let output = nix_command()
         .args([
             "eval",
             "--no-update-lock-file",
@@ -323,24 +391,64 @@ pub fn generations() -> Result<()> {
 }
 
 pub fn write_new(path: &Path, text: &str) -> Result<()> {
-    use std::io::Write;
     let mut file = fs::OpenOptions::new().write(true).create_new(true).open(path)?;
     file.write_all(text.as_bytes())?;
+    file.sync_all()?;
     Ok(())
 }
 
-pub fn machine_flake(source: &str, system: &str) -> Result<String> {
-    if source.contains(['"', '\\', '\n', '\r', '$']) {
+pub fn write_config(path: &Path, config: &NoxConfig) -> Result<()> {
+    config.validate().map_err(|errors| errors.join("\n"))?;
+    replace_file(path, toml::to_string_pretty(config)?.as_bytes())
+}
+
+fn replace_file(path: &Path, contents: &[u8]) -> Result<()> {
+    let name = path.file_name().and_then(|value| value.to_str()).ok_or("invalid file name")?;
+    let temporary = path.with_file_name(format!(".{name}.{}.tmp", std::process::id()));
+    let result = (|| {
+        let mut file =
+            fs::OpenOptions::new().write(true).create_new(true).open(&temporary)?;
+        file.write_all(contents)?;
+        file.sync_all()?;
+        fs::rename(&temporary, path)?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result
+}
+
+fn valid_flake_source(source: &str) -> bool {
+    !source.is_empty() && !source.contains(['"', '\\', '\n', '\r', '$'])
+}
+
+pub fn machine_flake(source: &str, system: &str, dotfiles: Option<&str>) -> Result<String> {
+    if !valid_flake_source(source) {
         return Err("invalid Nox source reference".into());
+    }
+    if let Some(dotfiles) = dotfiles {
+        if !valid_flake_source(dotfiles) {
+            return Err("invalid dotfiles flake reference".into());
+        }
     }
     if !["x86_64-linux", "aarch64-linux"].contains(&system) {
         return Err("unsupported system".into());
     }
+    let dotfiles_input = dotfiles
+        .map(|source| format!("  inputs.dotfiles.url = \"{source}\";\n"))
+        .unwrap_or_default();
     Ok(format!(
         r#"{{
   inputs.nox.url = "{source}";
-  outputs = {{ self, nox }}:
-    let machine = nox.lib.mkSystem {{ configFile = ./nox.toml; system = "{system}"; }};
+{dotfiles_input}  outputs = inputs@{{ self, nox, ... }}:
+    let
+      machine = nox.lib.mkSystem {{
+        configFile = ./nox.toml;
+        system = "{system}";
+        extraInputs = builtins.removeAttrs inputs [ "self" "nox" ];
+        extraModules = if inputs ? dotfiles then [ inputs.dotfiles.nixosModules.default ] else [ ];
+      }};
     in {{
       nixosConfigurations.nox = machine;
       packages.{system} = {{
@@ -355,17 +463,94 @@ pub fn machine_flake(source: &str, system: &str) -> Result<String> {
     ))
 }
 
+pub fn machine_module() -> &'static str {
+    r#"{ inputs, pkgs, ... }:
+{
+  # This file is user-owned. Nox will register it but never rewrite it.
+  # Add machine-specific NixOS options or packages here, for example:
+  # environment.systemPackages = [ pkgs.hello ];
+  #
+  # Additional flake inputs added to flake.nix are available through inputs.
+}
+"#
+}
+
+pub fn dotfiles_flake(username: &str) -> String {
+    format!(
+        r#"{{
+  description = "Home Manager dotfiles for {username}";
+  inputs = {{
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
+    home-manager = {{
+      url = "github:nix-community/home-manager/release-26.05";
+      inputs.nixpkgs.follows = "nixpkgs";
+    }};
+  }};
+  outputs = inputs@{{ home-manager, ... }}: {{
+    nixosModules.default = {{ ... }}: {{
+      imports = [ home-manager.nixosModules.home-manager ];
+      home-manager = {{
+        useGlobalPkgs = true;
+        useUserPackages = true;
+        extraSpecialArgs = {{ inherit inputs; }};
+        users.{username} = import ./home.nix;
+      }};
+    }};
+  }};
+}}
+"#
+    )
+}
+
+pub fn home_module(username: &str) -> String {
+    format!(
+        r#"{{ pkgs, ... }}:
+{{
+  home = {{
+    username = "{username}";
+    homeDirectory = "/home/{username}";
+    stateVersion = "26.05";
+  }};
+  programs = {{
+    git.enable = true;
+    home-manager.enable = true;
+  }};
+  home.packages = with pkgs; [
+    # Add user-scoped packages here.
+  ];
+}}
+"#
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
     fn source_cannot_inject_nix() {
         for source in ["x\"; builtins.abort", "${builtins.abort}", "x\ny", "a\\b"] {
-            assert!(machine_flake(source, "x86_64-linux").is_err());
+            assert!(machine_flake(source, "x86_64-linux", None).is_err());
         }
-        assert!(machine_flake("github:swarnimarun/nox", "x86_64-linux")
+        assert!(machine_flake("github:swarnimarun/nox", "x86_64-linux", None)
             .unwrap()
             .contains("./nox.toml"));
-        assert!(machine_flake("github:swarnimarun/nox", "unknown").is_err());
+        let flake = machine_flake(
+            "github:swarnimarun/nox",
+            "x86_64-linux",
+            Some("github:example/dotfiles"),
+        )
+        .unwrap();
+        assert!(flake.contains("inputs.dotfiles.url"));
+        assert!(flake.contains("nixosModules.default"));
+        assert!(machine_flake("github:swarnimarun/nox", "unknown", None).is_err());
+    }
+
+    #[test]
+    fn nix_commands_enable_required_experimental_features() {
+        let args = nix_arguments(&["flake".to_owned(), "lock".to_owned()]);
+        assert_eq!(
+            &args[..2],
+            &["--extra-experimental-features", "nix-command flakes"]
+        );
     }
 }
