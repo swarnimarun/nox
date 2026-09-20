@@ -16,6 +16,7 @@ on:
           - hyprland
           - niri
           - wsl
+          - container
 
 permissions:
   actions: write
@@ -115,6 +116,7 @@ jobs:
           - hyprland
           - niri
           - wsl
+          - container
     steps:
       - name: Select artifact
         id: selected
@@ -140,7 +142,7 @@ jobs:
             experimental-features = nix-command flakes
 
       - name: Build and boot-test ISO
-        if: steps.selected.outputs.build == 'true' && matrix.artifact != 'wsl'
+        if: steps.selected.outputs.build == 'true' && matrix.artifact != 'wsl' && matrix.artifact != 'container'
         env:
           FLAVOUR: ${{ matrix.artifact }}
           SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
@@ -174,6 +176,31 @@ jobs:
           printf '%s  %s\n' "$image_sha256" "$(basename "$image")" > "$image.sha256"
           jq -n --arg commit "$SOURCE_SHA" --arg artifact "wsl" --arg architecture "x86_64-linux" --arg image_sha256 "$image_sha256" --arg flake_lock_sha256 "$(sha256sum flake.lock | cut -d' ' -f1)" --arg cargo_lock_sha256 "$(sha256sum Cargo.lock | cut -d' ' -f1)" '{commit: $commit, artifact: $artifact, architecture: $architecture, image_sha256: $image_sha256, archive_validation: "passed", runtime_test: "requires Windows WSL2", flake_lock_sha256: $flake_lock_sha256, cargo_lock_sha256: $cargo_lock_sha256}' > release/nox-wsl-x86_64-linux.provenance.json
 
+      - name: Build and runtime-test container image
+        if: steps.selected.outputs.build == 'true' && matrix.artifact == 'container'
+        env:
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+        run: |
+          mkdir -p release
+          nix build --no-update-lock-file .#oci --out-link result-oci
+          image="release/nox-container-x86_64-linux.oci.tar.gz"
+          cp -L -- result-oci "$image"
+          test -s "$image"
+          test "$(stat --format=%s "$image")" -gt 104857600
+          gzip -t "$image"
+          docker load --input "$image"
+          docker run --rm --network none nox-workspace:dev /bin/bash -lc '
+            set -eu
+            noxctl --help >/dev/null
+            git --version >/dev/null
+            nix --extra-experimental-features "nix-command flakes" --version >/dev/null
+            test -f /etc/nix/nix.conf
+            grep -q "experimental-features = nix-command flakes" /etc/nix/nix.conf
+          '
+          image_sha256="$(sha256sum "$image" | cut -d' ' -f1)"
+          printf '%s  %s\n' "$image_sha256" "$(basename "$image")" > "$image.sha256"
+          jq -n --arg commit "$SOURCE_SHA" --arg artifact "container-oci" --arg architecture "x86_64-linux" --arg image_sha256 "$image_sha256" --arg flake_lock_sha256 "$(sha256sum flake.lock | cut -d' ' -f1)" --arg cargo_lock_sha256 "$(sha256sum Cargo.lock | cut -d' ' -f1)" '{commit: $commit, artifact: $artifact, architecture: $architecture, image_sha256: $image_sha256, archive_validation: "passed", docker_runtime_test: "passed", network_isolation: "passed", flake_lock_sha256: $flake_lock_sha256, cargo_lock_sha256: $cargo_lock_sha256}' > release/nox-container-x86_64-linux.provenance.json
+
       - name: Publish to the single prerelease
         if: steps.selected.outputs.build == 'true'
         uses: softprops/action-gh-release@v2
@@ -184,8 +211,9 @@ jobs:
           target_commitish: ${{ needs.prepare.outputs.source_sha }}
           body: |
             Reproducible Nox preview images built from the current main branch.
-            Hyprland and Niri ISOs are UEFI-smoke-tested in CI. WSL is archive-
-            validated in CI and still requires a separate Windows WSL2 runtime test.
+            Hyprland and Niri ISOs are UEFI-smoke-tested in CI. The OCI workspace
+            is loaded and exercised with Docker without network or host mounts. WSL
+            is archive-validated in CI and still requires a Windows WSL2 runtime test.
           files: release/*
           fail_on_unmatched_files: true
           overwrite_files: true

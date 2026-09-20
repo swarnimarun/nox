@@ -24,8 +24,8 @@ generated Home Manager dotfiles flake, locks it, evaluates its toplevel and
 Home Manager user, and runs the non-mutating upgrade preview.
 
 The release workflow is the exact-image gate. It starts after successful
-`main` CI, removes stale Actions artifacts, and builds Hyprland, Niri, and WSL
-serially. Each ISO boots with QEMU/TCG and UEFI; its marker is emitted only after
+`main` CI, removes stale Actions artifacts, and builds Hyprland, Niri, WSL, and OCI
+container artifacts serially. Each ISO boots with QEMU/TCG and UEFI; its marker is emitted only after
 NetworkManager, greetd, the expected compositor, and `nox-installer` run.
 
 ## Target release evidence
@@ -41,9 +41,9 @@ NetworkManager, greetd, the expected compositor, and `nox-installer` run.
 
 Record commit SHA, flake.lock, Cargo.lock, architecture, image SHA256, command,
 exit status and console logs. A failed or skipped test never counts as support.
-The workflow may also be dispatched for `all`, one compositor, or WSL. A full
+The workflow may also be dispatched for `all`, one compositor, WSL, or the container. A full
 run deletes other prereleases and publishes image, SHA-256, and provenance files
-to `v0.2.0-alpha.1`. Heavyweight jobs use `max-parallel: 1`. WSL packaging runs
+to `v0.2.0-alpha.1`. The OCI image is loaded and run with Docker in a network-isolated container without host mounts. Heavyweight jobs use `max-parallel: 1`. WSL packaging runs
 as root in CI; Windows WSL2 launch validation remains external.
 
 ## Before enabling apply or rollback

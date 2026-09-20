@@ -15,6 +15,10 @@
     makeUsbBootable = true;
   };
   boot.kernelParams = [ "console=ttyS0" ];
+  # The upstream installation profile otherwise boots to a console-only target.
+  services.displayManager.enable = lib.mkForce true;
+  systemd.defaultUnit = lib.mkForce "graphical.target";
+  systemd.services.greetd.wantedBy = lib.mkForce [ "graphical.target" ];
   environment.systemPackages = [
     inputs.self.packages.${pkgs.system}.graphical-installer
     pkgs.gparted
