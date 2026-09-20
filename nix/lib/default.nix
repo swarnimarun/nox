@@ -13,17 +13,18 @@ let
       user = raw.user or { };
       c = raw // {
         desktop = desktop // {
-          flavour = desktop.flavour or (
-            if
-              builtins.elem raw.profile [
-                "desktop"
-                "gaming"
-              ]
-            then
+          flavour =
+            desktop.flavour or (
+              if
+                builtins.elem raw.profile [
+                  "desktop"
+                  "gaming"
+                ]
+              then
                 "hyprland"
-            else
-              "none"
-          );
+              else
+                "none"
+            );
         };
         hardware = hardware // {
           graphics = hardware.graphics or "auto";

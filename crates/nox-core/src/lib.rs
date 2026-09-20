@@ -58,7 +58,8 @@ pub fn plan(config: &NoxConfig) -> Plan {
             "build an EFI qcow2 disk; test it in a disposable virtual machine".to_owned()
         }
         Target::Wsl => {
-            "build the WSL tarball builder; packaging requires root before Windows import".to_owned()
+            "build the WSL tarball builder; packaging requires root before Windows import"
+                .to_owned()
         }
         Target::Oci => {
             "build an OCI userspace archive; this does not boot a kernel or systemd".to_owned()
