@@ -122,15 +122,7 @@ pub fn upgrade_apply(config: &Path) -> Result<()> {
     let lock_path = root.join("flake.lock");
     let previous = fs::read(&lock_path)?;
     let result = (|| {
-        invoke_nix(
-            &[
-                "flake".into(),
-                "update".into(),
-                "--flake".into(),
-                reference(&root),
-            ],
-            true,
-        )?;
+        invoke_nix(&["flake".into(), "update".into(), "--flake".into(), reference(&root)], true)?;
         invoke_nix(
             &[
                 "build".into(),
