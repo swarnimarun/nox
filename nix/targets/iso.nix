@@ -28,6 +28,10 @@
   systemd.services.nox-live-ready = {
     description = "Verify that the Nox live compositor and installer started";
     wantedBy = [ "multi-user.target" ];
+    requires = [
+      "NetworkManager.service"
+      "greetd.service"
+    ];
     after = [
       "NetworkManager.service"
       "greetd.service"
@@ -48,9 +52,11 @@
           break
         fi
         if [ "$attempt" -eq 180 ]; then
-          echo "Nox live session did not start compositor=$compositor and nox-installer" >&2
-          systemctl --no-pager status NetworkManager.service greetd.service >&2 || true
-          ps aux >&2
+          {
+            echo "Nox live session did not start compositor=$compositor and nox-installer"
+            systemctl --no-pager status NetworkManager.service greetd.service || true
+            ps aux
+          } 2>&1 | tee /dev/ttyS0 >&2
           exit 1
         fi
         sleep 1
