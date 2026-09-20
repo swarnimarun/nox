@@ -20,14 +20,18 @@ are missing; review any newly generated locks before sharing the configuration. 
 nix profile install .#noxctl
 ```
 
-The source repository is private: remote flake access needs GitHub
-credentials. For local development use the absolute checkout reference below.
+Nox commands supply the required `nix-command` and `flakes` feature flags.
+For local development, use an absolute `path:` reference to this checkout.
+For setup, upgrades, custom modules, and Git-backed Home Manager configuration,
+see [project management](project-management.md).
 
 ## Build the supplied examples
 
 ```sh
 nix build --no-update-lock-file .#qcow2 --out-link result-vm
 nix build --no-update-lock-file .#iso --out-link result-iso
+nix build --no-update-lock-file .#hyprland-iso --out-link result-hyprland
+nix build --no-update-lock-file .#niri-iso --out-link result-niri
 nix build --no-update-lock-file .#wsl --out-link result-wsl
 nix build --no-update-lock-file .#oci --out-link result-oci
 ```
@@ -35,7 +39,9 @@ nix build --no-update-lock-file .#oci --out-link result-oci
 | Output | Next step |
 |---|---|
 | `result-vm/*.qcow2` | Attach to an EFI VM with virtio storage and a serial console |
-| `result-iso/iso/*.iso` | Boot as removable installer media in a disposable VM |
+| `result-iso/iso/*.iso` | Boot as removable recovery media in a disposable VM |
+| `result-hyprland/iso/*.iso` | Boot the Hyprland live installer with UEFI |
+| `result-niri/iso/*.iso` | Boot the Niri live installer with UEFI |
 | `result-wsl/bin/nixos-wsl-tarball-builder` | Run as root to produce `nox.wsl`, then import on Windows |
 | `result-oci` | Load archive into Podman/Docker and start a workspace |
 
@@ -57,10 +63,38 @@ nix run .#vm-smoke -- --timeout 600
 The runner uses a snapshot and does not persist guest disk writes. To test
 installation persistence, use a separate disposable guest with its own disk.
 
+## Wayland live images
+
+The latest prerelease contains `nox-hyprland-x86_64-linux.iso` and
+`nox-niri-x86_64-linux.iso`. Verify the matching `.sha256`, write the ISO to
+removable media, and boot it in UEFI mode. The ephemeral live user is `nox`
+with password `nox`.
+
+The live session starts NetworkManager, PipeWire, Waybar, greetd, the selected
+compositor, and `nox-installer`. The installer lists only unmounted whole disks
+with stable `/dev/disk/by-id/...` names. The selected disk is fully
+repartitioned; its previous contents are not recoverable through Nox.
+
+Build and smoke-test one local image at a time:
+
+```sh
+nix build --no-update-lock-file .#hyprland-iso --out-link result-hyprland
+nix run --no-update-lock-file .#iso-smoke -- \
+  result-hyprland/iso/*.iso --expect-flavour hyprland --timeout 900
+
+nix build --no-update-lock-file .#niri-iso --out-link result-niri
+nix run --no-update-lock-file .#iso-smoke -- \
+  result-niri/iso/*.iso --expect-flavour niri --timeout 900
+```
+
+The QEMU/TCG UEFI smoke succeeds only after NetworkManager, greetd, the expected
+compositor, and GTK installer process are alive. It does not erase a disk or
+prove that an installed system survives reboot.
+
 ## Create a machine project
 
 ```sh
-noxctl init /tmp/nox-lab --profile server --target qcow2 --source "path:$PWD"
+noxctl setup /tmp/nox-lab --profile server --target qcow2 --source "path:$PWD"
 noxctl validate --config /tmp/nox-lab/nox.toml
 noxctl plan --config /tmp/nox-lab/nox.toml
 noxctl lock --config /tmp/nox-lab/nox.toml
@@ -68,8 +102,8 @@ noxctl image build --config /tmp/nox-lab/nox.toml --dry-run
 noxctl image build --config /tmp/nox-lab/nox.toml --out-link result-lab
 ```
 
-`init` requires an empty directory. Before building your own VM, add an access
-module defining a user/password or public SSH key and list it in
+`setup` requires an empty directory and writes a locked project. Before
+building your own VM, add an access module defining a user/password or public SSH key and list it in
 `[nix].extra_modules`. Generated systems have no universal default password.
 Add hardware modules through the same explicit list. No command rewrites
 existing user-owned `.nix` files.
@@ -149,6 +183,26 @@ noxctl install --config /tmp/nox-metal/nox.toml --host root@192.0.2.10 \
 The destination OS and disk contents are replaced. After reboot verify SSH,
 `findmnt /`, `noxctl --help`, and generation inspection. Execution uses an immutable snapshot of the locked project. Keep the machine flake/locks under version
 control for subsequent management.
+
+For a local install from the live ISO, use the graphical installer or the
+equivalent two-stage CLI flow:
+
+```sh
+noxctl plan --config /path/to/project/nox.toml
+noxctl installer local --config /path/to/project/nox.toml
+
+sudo -v
+read -rsp 'Installed user password: ' NOX_INSTALL_PASSWORD; echo
+printf '%s' "$NOX_INSTALL_PASSWORD" | sudo noxctl installer local \
+  --config /path/to/project/nox.toml \
+  --execute \
+  --confirm-disk /dev/disk/by-id/EXACT-DISK-ID
+unset NOX_INSTALL_PASSWORD
+```
+
+Before mutation, Nox snapshots the locked flake, verifies exactly one matching
+Disko disk, and builds the system. It then erases, formats, mounts, installs,
+and sets the selected user's password from standard input.
 
 `apply` and `rollback` still fail explicitly; their health-check and timed
 recovery contract must be implemented and tested before host activation is
