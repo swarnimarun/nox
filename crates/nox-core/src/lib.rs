@@ -38,16 +38,24 @@ pub fn plan(config: &NoxConfig) -> Plan {
             "evaluate the NixOS module graph".to_owned(),
             format!("prepare the {} target", config.target),
             match config.target {
-                Target::Metal => "build the system; installation requires explicit host/disk confirmation",
-                Target::Iso => "build installer media; boot and disk installation are separate operations",
+                Target::Metal => {
+                    "build the system; installation requires explicit host/disk confirmation"
+                }
+                Target::Iso => {
+                    "build installer media; boot and disk installation are separate operations"
+                }
                 Target::Qcow2 => "build an EFI qcow2 disk; test it in a disposable virtual machine",
-                Target::Wsl => "build the WSL tarball builder; packaging requires root before Windows import",
-                Target::Oci => "build an OCI userspace archive; this does not boot a kernel or systemd",
-            }.to_owned(),
+                Target::Wsl => {
+                    "build the WSL tarball builder; packaging requires root before Windows import"
+                }
+                Target::Oci => {
+                    "build an OCI userspace archive; this does not boot a kernel or systemd"
+                }
+            }
+            .to_owned(),
         ],
     }
 }
-
 impl Plan {
     pub fn render_text(&self) -> String {
         let capabilities = if self.capabilities.is_empty() {
@@ -88,4 +96,3 @@ mod tests {
         assert_eq!(result.capabilities, vec!["apps", "remote-management", "storage"]);
     }
 }
-

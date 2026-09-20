@@ -8,9 +8,35 @@ let
       caps = c.capabilities or [ ];
       validName = builtins.match "[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?" c.name != null;
     in
-    assert lib.assertMsg (lib.all (key: builtins.elem key [ "schema_version" "name" "profile" "target" "capabilities" "nix" ]) (builtins.attrNames c)) "Unknown Nox field";
-    assert lib.assertMsg (lib.all (key: builtins.elem key [ "channel" "extra_modules" ]) (builtins.attrNames (c.nix or { }))) "Unknown Nix setting";
-    assert lib.assertMsg (lib.all (p: builtins.isString p && p != "" && !(lib.hasPrefix "/" p) && lib.hasSuffix ".nix" p && lib.all (part: part != "" && part != "." && part != "..") (lib.splitString "/" p)) (c.nix.extra_modules or [ ])) "Extra modules must be relative .nix paths within the machine project";
+    assert lib.assertMsg (lib.all (
+      key:
+      builtins.elem key [
+        "schema_version"
+        "name"
+        "profile"
+        "target"
+        "capabilities"
+        "nix"
+      ]
+    ) (builtins.attrNames c)) "Unknown Nox field";
+    assert lib.assertMsg (lib.all (
+      key:
+      builtins.elem key [
+        "channel"
+        "extra_modules"
+      ]
+    ) (builtins.attrNames (c.nix or { }))) "Unknown Nix setting";
+    assert lib.assertMsg (lib.all
+      (
+        p:
+        builtins.isString p
+        && p != ""
+        && !(lib.hasPrefix "/" p)
+        && lib.hasSuffix ".nix" p
+        && lib.all (part: part != "" && part != "." && part != "..") (lib.splitString "/" p)
+      )
+      (c.nix.extra_modules or [ ])
+    ) "Extra modules must be relative .nix paths within the machine project";
     assert lib.assertMsg (c.schema_version == 1) "Unsupported Nox schema";
     assert lib.assertMsg (validName && builtins.stringLength c.name <= 63) "Invalid hostname";
     assert lib.assertMsg (builtins.elem c.profile [
@@ -56,7 +82,17 @@ let
     assert lib.assertMsg (
       (c.nix.channel or "nixos-26.05") == "nixos-26.05"
     ) "Change the flake input and schema together to change channels";
-    assert lib.assertMsg (c.target != "oci" || lib.all (cap: builtins.elem cap [ "development" "storage" "shares" ]) caps) "OCI supports userspace capabilities only";
+    assert lib.assertMsg (
+      c.target != "oci"
+      || lib.all (
+        cap:
+        builtins.elem cap [
+          "development"
+          "storage"
+          "shares"
+        ]
+      ) caps
+    ) "OCI supports userspace capabilities only";
     c;
   mkSystem =
     {
