@@ -35,9 +35,14 @@ command = [
     str(args.image),
     "-nic",
     "user,model=virtio-net-pci",
-    "-nographic",
+    "-display",
+    "none",
+    "-serial",
+    "stdio",
     "-monitor",
     "none",
+    "-vga",
+    "virtio",
 ]
 process = subprocess.Popen(
     command,
@@ -76,5 +81,8 @@ finally:
         process.wait()
 
 if not success:
-    raise SystemExit(f"Exact ISO did not emit {marker.decode()!r}; inspect {args.log}")
+    console = args.log.read_text(errors="replace")[-65536:]
+    raise SystemExit(
+        f"Exact ISO did not emit {marker.decode()!r}; console tail follows:\n{console}"
+    )
 print(f"Exact {args.expect_flavour} ISO reached graphical target; console: {args.log}")
