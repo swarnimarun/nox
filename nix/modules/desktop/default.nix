@@ -86,7 +86,7 @@ let
   '';
   sessionCommand =
     if hyprland then
-      "${pkgs.hyprland}/bin/start-hyprland --config /etc/nox/hyprland.conf"
+      "${pkgs.hyprland}/bin/start-hyprland -- --config /etc/nox/hyprland.conf"
     else
       "env NIRI_CONFIG=/etc/nox/niri.kdl ${pkgs.niri}/bin/niri-session";
 in
