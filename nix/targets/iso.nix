@@ -56,6 +56,10 @@
             echo "Nox live session did not start compositor=$compositor and nox-installer"
             systemctl --no-pager status NetworkManager.service greetd.service || true
             ps aux
+            if [ -s /tmp/nox-installer.log ]; then
+              echo "GTK installer output:"
+              cat /tmp/nox-installer.log
+            fi
           } 2>&1 | tee /dev/ttyS0 >&2
           exit 1
         fi
