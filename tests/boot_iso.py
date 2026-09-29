@@ -36,7 +36,7 @@ command = [
     "-machine",
     "q35",
     "-accel",
-    "tcg",
+    "kvm:tcg",
     "-m",
     "4096",
     "-smp",
