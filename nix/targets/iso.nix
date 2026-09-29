@@ -60,6 +60,7 @@
               echo "GTK installer output:"
               cat /tmp/nox-installer.log
             fi
+            echo "NOX_LIVE_FAILURE flavour=${config.nox.desktop.flavour}"
           } 2>&1 | tee /dev/ttyS0 >&2
           exit 1
         fi
