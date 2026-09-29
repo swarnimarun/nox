@@ -98,8 +98,9 @@ jobs:
           sudo ./result-wsl/bin/nixos-wsl-tarball-builder "$image"
           test -s "$image"
           test "$(stat --format=%s "$image")" -gt 104857600
-          tar -tzf "$image" | grep -qx './etc/wsl-distribution.conf'
-          tar -tzf "$image" | grep -qx './etc/nixos/configuration.nix'
+          tar -tzf "$image" > "$RUNNER_TEMP/wsl-contents.txt"
+          grep -qx './etc/wsl-distribution.conf' "$RUNNER_TEMP/wsl-contents.txt"
+          grep -qx './etc/nixos/configuration.nix' "$RUNNER_TEMP/wsl-contents.txt"
       - name: Fail if the Hyprland boot gate failed
         if: steps.hyprland.outcome == 'failure'
         run: exit 1
