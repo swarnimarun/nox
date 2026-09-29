@@ -30,6 +30,7 @@ shutil.copy2(variables, writable_variables)
 writable_variables.chmod(0o600)
 
 marker = f"NOX_LIVE_READY flavour={args.expect_flavour}".encode()
+failure_marker = b"Nox live session did not start"
 command = [
     "qemu-system-x86_64",
     "-machine",
@@ -81,6 +82,8 @@ try:
                 log.write(chunk)
                 log.flush()
                 seen = (seen + chunk)[-65536:]
+                if failure_marker in seen:
+                    break
                 if marker in seen:
                     success = True
                     break
