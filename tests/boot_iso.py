@@ -30,7 +30,7 @@ shutil.copy2(variables, writable_variables)
 writable_variables.chmod(0o600)
 
 marker = f"NOX_LIVE_READY flavour={args.expect_flavour}".encode()
-failure_marker = b"Nox live session did not start"
+failure_marker = f"NOX_LIVE_FAILURE flavour={args.expect_flavour}".encode()
 command = [
     "qemu-system-x86_64",
     "-machine",
