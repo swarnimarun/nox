@@ -12,7 +12,7 @@ let
   hyprland = flavour == "hyprland";
   live = config.nox.target == "iso";
   installerHyprland = lib.optionalString live ''
-    exec-once = ${inputs.self.packages.${pkgs.system}.graphical-installer}/bin/nox-installer
+    exec-once = ${pkgs.bash}/bin/bash -c '${inputs.self.packages.${pkgs.system}.graphical-installer}/bin/nox-installer 2>&1 | ${pkgs.coreutils}/bin/tee /tmp/nox-installer.log'
   '';
   installerNiri = lib.optionalString live ''
     spawn-at-startup "${inputs.self.packages.${pkgs.system}.graphical-installer}/bin/nox-installer"
