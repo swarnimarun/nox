@@ -34,9 +34,7 @@ failure_marker = b"Nox live session did not start"
 command = [
     "qemu-system-x86_64",
     "-machine",
-    "q35",
-    "-accel",
-    "kvm:tcg",
+    "q35,accel=kvm:tcg",
     "-m",
     "4096",
     "-smp",
