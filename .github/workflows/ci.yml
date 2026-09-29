@@ -83,6 +83,8 @@ jobs:
           extra_nix_config: |
             experimental-features = nix-command flakes
       - name: Build and boot-test the exact Hyprland ISO
+        id: hyprland
+        continue-on-error: true
         run: |
           nix build --no-update-lock-file .#hyprland-iso --out-link result-iso
           image="$(find -L result-iso/iso -maxdepth 1 -type f -name '*.iso' -print -quit)"
@@ -98,3 +100,6 @@ jobs:
           test "$(stat --format=%s "$image")" -gt 104857600
           tar -tzf "$image" | grep -qx './etc/wsl-distribution.conf'
           tar -tzf "$image" | grep -qx './etc/nixos/configuration.nix'
+      - name: Fail if the Hyprland boot gate failed
+        if: steps.hyprland.outcome == 'failure'
+        run: exit 1
