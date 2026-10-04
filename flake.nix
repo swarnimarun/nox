@@ -62,8 +62,11 @@
             python
           ];
           text = ''
-            export GI_TYPELIB_PATH="${pkgs.gtk4}/lib/girepository-1.0:${pkgs.graphene}/lib/girepository-1.0:${pkgs.pango}/lib/girepository-1.0:${pkgs.cairo}/lib/girepository-1.0:${pkgs.gobject-introspection}/lib/girepository-1.0:${pkgs.glib}/lib/girepository-1.0:${pkgs.gdk-pixbuf}/lib/girepository-1.0''${GI_TYPELIB_PATH:+:''${GI_TYPELIB_PATH}}"
+            export GI_TYPELIB_PATH="${pkgs.gtk4}/lib/girepository-1.0:${pkgs.graphene}/lib/girepository-1.0:${pkgs.lib.getLib pkgs.pango}/lib/girepository-1.0:${pkgs.cairo}/lib/girepository-1.0:${pkgs.gobject-introspection}/lib/girepository-1.0:${pkgs.glib}/lib/girepository-1.0:${pkgs.gdk-pixbuf}/lib/girepository-1.0''${GI_TYPELIB_PATH:+:''${GI_TYPELIB_PATH}}"
             export NOX_SOURCE="path:${self.outPath}"
+            if [ "''${1:-}" = "--check-runtime" ]; then
+              exec ${python}/bin/python3 -c 'from gi.repository import GLib; import gi; gi.require_version("Gtk", "4.0"); from gi.repository import Gtk'
+            fi
             exec ${python}/bin/python3 ${./installer/nox-installer.py} "$@"
           '';
         };
@@ -157,6 +160,10 @@
                 python3 -m py_compile ${./installer/nox-installer.py}
                 touch $out
               '';
+          installer-runtime = pkgs.runCommand "nox-installer-runtime" { } ''
+            ${graphicalInstaller system}/bin/nox-installer --check-runtime
+            touch $out
+          '';
           server-boot = pkgs.testers.runNixOSTest (import ./tests/nix/server-boot.nix);
           target-evaluation = pkgs.runCommand "nox-target-evaluation" { } (
             builtins.deepSeq (map (name: (noxLib.artifact (machine system name)).drvPath) [
