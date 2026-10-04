@@ -75,6 +75,12 @@
               pkgs.wrapGAppsHook4
             ];
             buildInputs = (old.buildInputs or [ ]) ++ [ pkgs.gtk4 ];
+            # writeShellApplication uses buildCommand instead of the normal fixup phase.
+            buildCommand = old.buildCommand + ''
+              prefix="$out"
+              gappsWrapperArgsHook
+              wrapGApp "$out/bin/nox-installer"
+            '';
           });
     in
     {
