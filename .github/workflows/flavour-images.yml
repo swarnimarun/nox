@@ -86,7 +86,11 @@ jobs:
             await cleanup({ github, context, core, tag: process.env.RELEASE_TAG });
       - name: Remove failed draft
         if: failure() && steps.draft.outcome == 'success' && steps.publish.outcome != 'success'
-        run: gh release delete "$RELEASE_TAG" --cleanup-tag --yes
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const cleanup = require('./.github/scripts/failed-draft.cjs');
+            await cleanup({ github, context, core, tag: process.env.RELEASE_TAG });
 
   cache-retention:
     needs: build-release
