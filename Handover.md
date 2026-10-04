@@ -1,85 +1,79 @@
 # Nox implementation handover
 
 Updated: 2026-10-05
-Recovery branch: `recovery/niri-wayland-installer`  
-Validated implementation commit: `71c8c0ae9f76174c6e37875f5078fea76fe71cd0`
 
-## Executive status
+## Current status
 
-The missing Wayland/installer work was reconstructed on a dedicated recovery
-branch and expanded with project setup, dependency upgrade, custom-module, and
-Git/Home Manager dotfiles workflows. GitHub Actions run
-[35510761589](https://github.com/swarnimarun/nox/actions/runs/35510761589)
-passes both jobs at `71c8c0a`.
+PRs [#10](https://github.com/swarnimarun/nox/pull/10) and
+[#11](https://github.com/swarnimarun/nox/pull/11) are merged. The verified release
+source is `7b7b36ba38c33d8ccee045ddee78de32ccb57233`.
 
-The recovery branch is ready for a pull request into `main`. The image workflow
-intentionally runs only after successful `main` CI, so exact ISO build/boot and
-prerelease publication are the remaining release gates.
+[Nox v0.2.0-alpha.43-1](https://github.com/swarnimarun/nox/releases/tag/v0.2.0-alpha.43-1)
+is published with 26 uploaded assets: Hyprland and Niri ISO parts, WSL and OCI
+images, image and part checksums, ordered part manifests, provenance, and ISO
+console logs. The two ISOs exceed GitHub's per-asset limit and each uses five
+ordered parts. Follow the README reassembly instructions before booting them.
 
-## Implemented surface
-
-- Typed Hyprland/Niri, graphics, bootloader, filesystem, locale, user, and
-  stable install-disk settings in Rust, TOML, and Nix.
-- Hyprland and Niri live systems with greetd, NetworkManager, PipeWire,
-  portals, keyring/polkit, Waybar, starter compositor configs, and GTK4
-  installer autostart.
-- Gaming defaults for Steam/Proton, GameScope, GameMode, MangoHud, Lutris,
-  Wine tooling, and 32-bit graphics.
-- AMD, Intel, NVIDIA open/proprietary, automatic, and VM graphics selections.
-- Disko Btrfs/ext4 layouts, systemd-boot/GRUB EFI, and guarded local or remote
-  installation using one exact `/dev/disk/by-id/...` device.
-- `noxctl setup`, offline `init`, automatic Nix experimental flags, guarded
-  upgrade preview/apply, project-local module registration, and a Git-ready
-  Home Manager dotfiles flake scaffold.
-- Serialized CI builds for Hyprland ISO, Niri ISO, WSL, and OCI. All targets must
-  validate before publication of a new immutable preview tag. Older Nox previews
-  are removed only after the replacement is complete.
-- One shared Nix build-cache snapshot, capped at 6 GiB, written only by the
-  serialized release job. CI restores it without creating PR cache versions.
+[Main CI](https://github.com/swarnimarun/nox/actions/runs/37240014863) and the
+[complete release workflow](https://github.com/swarnimarun/nox/actions/runs/37240291314)
+passed. Cache retention confirmed exactly one Nox build-cache snapshot.
 
 ## Verified evidence
 
 | Gate | Result |
 |---|---|
-| Rust formatting | Pass |
-| Rust workspace tests | Pass |
-| `noxctl` locked build | Pass |
-| Python CLI lifecycle suite | Pass, including setup/modules/upgrades/dotfiles and installer interlocks |
-| Python syntax checks | Pass |
-| Clippy with warnings denied | Pass |
-| Nix formatting | Pass |
-| `nix flake check --no-update-lock-file --show-trace` | Pass |
-| NixOS server VM test | Pass as part of flake checks |
-| Generated Niri/qcow2 project with generated Home Manager dotfiles flake | Lock and evaluation pass |
-| Non-mutating upgrade preview against a real generated flake | Pass |
-| Exact Hyprland/Niri ISO UEFI boot | Pending post-merge release workflow |
-| WSL archive packaging/validation | Pending post-merge release workflow |
-| Windows WSL2 launch, physical GPU coverage, installed-system reboot | External runtime evidence still required |
+| Rust formatting, workspace tests, locked CLI build, Clippy | Pass |
+| Python CLI lifecycle and installer interlock suite | Pass |
+| Release cleanup, process matching, multipart reassembly and failure tests | Pass |
+| Nix formatting, flake checks and server VM boot | Pass |
+| Generated Niri/qcow2 project with Home Manager dotfiles | Lock and evaluation pass |
+| GTK installer dependency imports | Pass |
+| Exact Hyprland and Niri ISO UEFI boot | Pass in the release workflow |
+| WSL tarball packaging and required configuration files | Pass |
+| OCI build and Docker runtime without network or host mounts | Pass |
+| OCI configuration files and sudoers permissions | Pass |
+| One cache snapshot with a 6 GiB pre-save limit | Pass |
 
-The ISO readiness service now withholds its serial marker until NetworkManager,
-greetd, the expected compositor process, and `nox-installer` are all running.
-The release workflow boots the exact copied release ISO under QEMU/TCG with
-UEFI and records the image and boot-log hashes in provenance.
+Windows WSL2 import and launch, rootless Podman, physical GPU coverage, and
+installed-system reboot remain external acceptance gates. CI evidence does not
+establish those runtime claims.
+
+## Release and cache behavior
+
+Successful push CI on `main` starts the release workflow; manual dispatch is
+also restricted to `main`. The workflow pins the tested source SHA and builds
+OCI, WSL, Hyprland, and Niri serially. Assets remain in a draft until every build,
+runtime/archive check, checksum, and upload passes. Failed drafts are removed;
+already published releases are preserved after ambiguous publishing errors.
+
+Publication creates a new immutable preview tag. Only after the complete release
+is public does cleanup remove older Nox `v0.2.0-alpha.*` previews and stale
+`nox-*` Actions artifacts. Stable releases and unrelated artifacts are preserved.
+There are no duplicate Actions image archives.
+
+CI restores the shared Nix cache without saving PR versions. The serialized image
+job is its only writer. A hard total `/nix` size check prevents snapshots above
+6 GiB; the following retention job keeps only the newest `nox-build-*` cache
+across refs and versions. Replacement briefly overlaps the prior snapshot, then
+steady state returns to one version.
+
+ISO compression uses Zstd level 6. In the measured Hyprland CI runs, the ISO build
+step fell from about 16 minutes at level 19 to 90 seconds. The faster compression
+produces larger images, so the uploader streams 1 GiB parts, verifies the complete
+image hash, and publishes an ordered manifest plus part checksums.
 
 ## Safety boundaries
 
-- `noxctl` may update `nox.toml` and `flake.lock`; it creates extension modules
-  only in a new empty project and never rewrites user-owned `.nix` files.
-- Upgrade preview resolves to a temporary alternate lock. Upgrade apply restores
-  the previous lock if the new toplevel does not build.
-- Upgrade apply does not activate or reboot the system.
-- Disk mutation requires a stable by-id disk, an exact confirmation, a locked
-  immutable flake snapshot, single-disk verification, and a successful preflight
-  toplevel build.
-- `apply` and `rollback` remain reserved until timed recovery, health checks,
-  and failure-injection coverage exist.
+- Desired state remains in Nix/TOML; `noxctl` does not rewrite arbitrary user Nix files.
+- Generated OCI configuration replaces read-only package links inside the image
+  build, without modifying the host or Nix store.
+- Disk installation requires an explicit stable by-id destination and confirmation.
+  CI tests never install onto a real host disk.
+- Upgrade apply does not activate or reboot the system. General apply/rollback
+  remains reserved until timed recovery, health checks, and failure-injection
+  coverage exist.
+- `noxd`, a web UI, clustering, and an app marketplace remain outside the current
+  implementation scope.
 
-## Release sequence
-
-1. Open and review the recovery pull request.
-2. Merge only while branch CI is green.
-3. Confirm the merge commit's `main` CI succeeds.
-4. Let `Flavour images` build Hyprland, Niri, WSL, and OCI serially.
-5. Verify both exact ISO UEFI smoke tests, WSL archive validation, and OCI runtime checks.
-6. Confirm the repository has one current Nox preview release with at least 14 assets
-   and at most one `nox-build-*` cache snapshot.
+See [testing and validation](docs/operations/testing.md) for reproducible commands,
+artifact evidence, and remaining target acceptance requirements.
