@@ -29,7 +29,8 @@ commit and checks the installer's GTK imports before building Hyprland, Niri,
 WSL, and OCI serially in one runner. Each ISO boots with QEMU (KVM when available,
 TCG otherwise) and UEFI; its marker requires NetworkManager, greetd, the selected
 compositor, and `nox-installer` to run. PR CI also boot-tests Hyprland and validates
-WSL, but cannot publish images or write caches.
+WSL, but cannot publish images or write caches. A separate OCI job builds and exercises
+the container on both PRs and main, including writable configuration ownership.
 
 ## Target release evidence
 
@@ -44,7 +45,8 @@ WSL, but cannot publish images or write caches.
 
 Record commit SHA, flake.lock, Cargo.lock, architecture, image SHA256, command,
 exit status and console logs. A failed or skipped test never counts as support.
-A manual dispatch rebuilds the full set. Assets upload to a new draft release,
+A manual dispatch rebuilds the full set. OCI and WSL run before the large ISO
+uploads so container failures are caught early. Assets upload to a new draft release,
 `v0.2.0-alpha.<run-number>-<attempt>`, pinned to the source SHA. Only after all four
 targets pass does CI publish it, then delete older Nox `v0.2.0-alpha.*` preview
 releases and stale `nox-*` Actions artifacts. Stable releases and unrelated
@@ -81,7 +83,9 @@ Validate cleanup boundaries locally with:
 ```sh
 node --test tests/ci/*.test.cjs
 python3 -m unittest discover -s tests/ci -p 'test_*.py' -v
-bash -n scripts/build-release.sh
+bash -n scripts/build-release.sh scripts/test-container.sh
+nix build --no-update-lock-file .#oci --out-link result-oci
+bash scripts/test-container.sh result-oci
 ```
 
 ## Before enabling apply or rollback

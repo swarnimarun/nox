@@ -49,6 +49,8 @@ in
     extraCommands = ''
       mkdir -p etc tmp root home nix/var/nix/profiles nix/var/nix/gcroots
       chmod 1777 tmp
+      # Package configuration may be read-only links into the Nix store.
+      rm -f etc/passwd etc/group etc/shadow etc/sudoers etc/os-release
       echo 'root:x:0:0:root:/root:/bin/bash' > etc/passwd
       echo 'root:x:0:' > etc/group
       echo 'root:!:1::::::' > etc/shadow
@@ -58,7 +60,11 @@ in
       echo 'NAME=Nox' > etc/os-release
       echo 'ID=nox' >> etc/os-release
       echo 'ID_LIKE=nixos' >> etc/os-release
+      if [ -L etc/nix ]; then
+        rm -f etc/nix
+      fi
       mkdir -p etc/nix
+      rm -f etc/nix/nix.conf
       echo 'experimental-features = nix-command flakes' > etc/nix/nix.conf
       echo 'sandbox = false' >> etc/nix/nix.conf
     '';

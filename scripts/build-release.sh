@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 : "${SOURCE_SHA:?}" "${RELEASE_TAG:?}" "${GH_REPO:?}"
-for artifact in hyprland niri wsl container; do
+for artifact in container wsl hyprland niri; do
   rm -rf release
   case "$artifact" in
     hyprland|niri)
@@ -40,16 +40,7 @@ for artifact in hyprland niri wsl container; do
       cp -L -- result-oci "$image"
       test -s "$image"
       test "$(stat --format=%s "$image")" -gt 104857600
-      gzip -t "$image"
-      docker load --input "$image"
-      docker run --rm --network none nox-workspace:dev /bin/bash -lc '
-        set -eu
-        noxctl --help >/dev/null
-        git --version >/dev/null
-        nix --extra-experimental-features "nix-command flakes" --version >/dev/null
-        test -f /etc/nix/nix.conf
-        grep -q "experimental-features = nix-command flakes" /etc/nix/nix.conf
-      '
+      bash scripts/test-container.sh "$image"
       image_sha256="$(sha256sum "$image" | cut -d' ' -f1)"
       printf '%s  %s\n' "$image_sha256" "$(basename "$image")" > "$image.sha256"
       jq -n --arg commit "$SOURCE_SHA" --arg artifact "container-oci" --arg architecture "x86_64-linux" --arg image_sha256 "$image_sha256" --arg flake_lock_sha256 "$(sha256sum flake.lock | cut -d' ' -f1)" --arg cargo_lock_sha256 "$(sha256sum Cargo.lock | cut -d' ' -f1)" '{commit: $commit, artifact: $artifact, architecture: $architecture, image_sha256: $image_sha256, archive_validation: "passed", docker_runtime_test: "passed", network_isolation: "passed", flake_lock_sha256: $flake_lock_sha256, cargo_lock_sha256: $cargo_lock_sha256}' > release/nox-container-x86_64-linux.provenance.json
