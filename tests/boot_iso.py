@@ -30,12 +30,11 @@ shutil.copy2(variables, writable_variables)
 writable_variables.chmod(0o600)
 
 marker = f"NOX_LIVE_READY flavour={args.expect_flavour}".encode()
+failure_marker = f"NOX_LIVE_FAILURE flavour={args.expect_flavour}".encode()
 command = [
     "qemu-system-x86_64",
     "-machine",
-    "q35",
-    "-accel",
-    "tcg",
+    "q35,accel=kvm:tcg",
     "-m",
     "4096",
     "-smp",
@@ -81,6 +80,8 @@ try:
                 log.write(chunk)
                 log.flush()
                 seen = (seen + chunk)[-65536:]
+                if failure_marker in seen:
+                    break
                 if marker in seen:
                     success = True
                     break

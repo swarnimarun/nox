@@ -51,7 +51,7 @@
           pkgs = nixpkgs.legacyPackages.${system};
           python = pkgs.python3.withPackages (packages: [ packages.pygobject3 ]);
         in
-        pkgs.writeShellApplication {
+        (pkgs.writeShellApplication {
           name = "nox-installer";
           runtimeInputs = [
             (cli system)
@@ -62,11 +62,26 @@
             python
           ];
           text = ''
-            export GI_TYPELIB_PATH="${pkgs.gtk4}/lib/girepository-1.0:${pkgs.glib}/lib/girepository-1.0:${pkgs.gdk-pixbuf}/lib/girepository-1.0''${GI_TYPELIB_PATH:+:''${GI_TYPELIB_PATH}}"
             export NOX_SOURCE="path:${self.outPath}"
+            if [ "''${1:-}" = "--check-runtime" ]; then
+              exec ${python}/bin/python3 -c 'from gi.repository import GLib; import gi; gi.require_version("Gtk", "4.0"); from gi.repository import Gtk'
+            fi
             exec ${python}/bin/python3 ${./installer/nox-installer.py} "$@"
           '';
-        };
+        }).overrideAttrs
+          (old: {
+            nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [
+              pkgs.gobject-introspection
+              pkgs.wrapGAppsHook4
+            ];
+            buildInputs = (old.buildInputs or [ ]) ++ [ pkgs.gtk4 ];
+            # writeShellApplication uses buildCommand instead of the normal fixup phase.
+            buildCommand = old.buildCommand + ''
+              prefix="$out"
+              gappsWrapperArgsHook
+              wrapGApp "$out/bin/nox-installer"
+            '';
+          });
     in
     {
       lib = noxLib;
@@ -157,6 +172,10 @@
                 python3 -m py_compile ${./installer/nox-installer.py}
                 touch $out
               '';
+          installer-runtime = pkgs.runCommand "nox-installer-runtime" { } ''
+            ${graphicalInstaller system}/bin/nox-installer --check-runtime
+            touch $out
+          '';
           server-boot = pkgs.testers.runNixOSTest (import ./tests/nix/server-boot.nix);
           target-evaluation = pkgs.runCommand "nox-target-evaluation" { } (
             builtins.deepSeq (map (name: (noxLib.artifact (machine system name)).drvPath) [
