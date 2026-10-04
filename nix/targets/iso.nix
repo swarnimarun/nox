@@ -44,10 +44,12 @@
     serviceConfig.Type = "oneshot";
     script = ''
       compositor=${if config.nox.desktop.flavour == "hyprland" then "Hyprland" else "niri"}
+      # Nix wrappers preserve argv[0] but can change the kernel's comm name.
+      # Match the executable path with a boundary, not start-hyprland/niri-session.
       for attempt in $(seq 1 180); do
         if systemctl --quiet is-active NetworkManager.service \
           && systemctl --quiet is-active greetd.service \
-          && pgrep --exact "$compositor" >/dev/null \
+          && pgrep --full "[/]bin/$compositor([[:space:]]|$)" >/dev/null \
           && pgrep --full '[n]ox-installer.py' >/dev/null; then
           break
         fi
@@ -55,7 +57,11 @@
           {
             echo "Nox live session did not start compositor=$compositor and nox-installer"
             systemctl --no-pager status NetworkManager.service greetd.service || true
-            ps aux
+            ps -eo pid,comm,args
+            echo "Compositor match:"
+            pgrep --full "[/]bin/$compositor([[:space:]]|$)" || true
+            echo "Installer match:"
+            pgrep --full '[n]ox-installer.py' || true
             if [ -s /tmp/nox-installer.log ]; then
               echo "GTK installer output:"
               cat /tmp/nox-installer.log
