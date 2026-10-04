@@ -50,7 +50,11 @@ targets pass does CI publish it, then delete older Nox `v0.2.0-alpha.*` preview
 releases and stale `nox-*` Actions artifacts. Stable releases and unrelated
 prereleases/artifacts are preserved. A failed build removes its draft and keeps
 the previous published images. Tags are never moved. The release includes four
-images, their checksums and provenance, and both ISO console logs (14 assets).
+images, their checksums and provenance, and both ISO console logs (at least 14 assets). ISOs use Zstd level 6 to avoid
+level 19's lengthy compression step. Images at or above 2 GiB upload as 1 GiB
+parts with an ordered manifest and part checksums, retaining the original image
+checksum. Parts stream to GitHub one at a time so local disk does not hold two
+full sets. Publication still waits for every part upload and hash verification.
 OCI is loaded and exercised with Docker without network or host mounts. WSL
 packaging runs as root; Windows WSL2 runtime validation remains external.
 
@@ -76,6 +80,7 @@ Validate cleanup boundaries locally with:
 
 ```sh
 node --test tests/ci/*.test.cjs
+python3 -m unittest discover -s tests/ci -p 'test_*.py' -v
 bash -n scripts/build-release.sh
 ```
 

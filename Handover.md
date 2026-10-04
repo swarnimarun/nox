@@ -81,5 +81,5 @@ UEFI and records the image and boot-log hashes in provenance.
 3. Confirm the merge commit's `main` CI succeeds.
 4. Let `Flavour images` build Hyprland, Niri, WSL, and OCI serially.
 5. Verify both exact ISO UEFI smoke tests, WSL archive validation, and OCI runtime checks.
-6. Confirm the repository has one current Nox preview release with 14 assets
+6. Confirm the repository has one current Nox preview release with at least 14 assets
    and at most one `nox-build-*` cache snapshot.

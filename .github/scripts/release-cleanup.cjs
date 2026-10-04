@@ -4,7 +4,11 @@ module.exports = async ({ github, context, core, tag }) => {
   const required = ['hyprland', 'niri', 'wsl', 'container'].flatMap((kind) => {
     const extension = { hyprland: 'iso', niri: 'iso', wsl: 'wsl', container: 'oci.tar.gz' }[kind];
     const prefix = `nox-${kind}-x86_64-linux`;
-    return [`${prefix}.${extension}`, `${prefix}.${extension}.sha256`, `${prefix}.provenance.json`];
+    const image = `${prefix}.${extension}`;
+    const direct = current.assets.some((asset) => asset.name === image && asset.size > 0);
+    const parts = current.assets.filter((asset) => asset.name.startsWith(`${image}.part-`) && asset.size > 0);
+    if (!direct && parts.length < 2) throw new Error(`Missing image or complete parts: ${image}`);
+    return [direct ? image : `${image}.parts.json`, `${image}.sha256`, `${prefix}.provenance.json`];
   });
   if (current.draft || required.some((name) => !current.assets.some((asset) => asset.name === name && asset.size > 0))) {
     throw new Error('Refusing cleanup before a complete release is published');

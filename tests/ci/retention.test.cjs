@@ -64,3 +64,23 @@ test('cleanup only deletes old Nox previews and Nox artifacts after complete pub
   await cleanup({ github, context, core, tag: 'v0.2.0-alpha.5' });
   assert.deepEqual(deleted, [['release', 1], ['artifact', 1]]);
 });
+
+test('cleanup accepts a complete multipart image with its manifest and checksums', async () => {
+  const { github, deleted } = releaseFixture();
+  const { data: current } = await github.rest.repos.getReleaseByTag();
+  const name = 'nox-hyprland-x86_64-linux.iso';
+  current.assets = current.assets.filter((asset) => asset.name !== name);
+  current.assets.push(...[`${name}.parts.json`, `${name}.part-000`, `${name}.part-001`].map((name) => ({ name, size: 1 })));
+  await cleanup({ github, context, core, tag: 'v0.2.0-alpha.5' });
+  assert.deepEqual(deleted, [['release', 1], ['artifact', 1]]);
+});
+
+test('cleanup rejects missing image parts before removing old releases', async () => {
+  const { github, deleted } = releaseFixture();
+  const { data: current } = await github.rest.repos.getReleaseByTag();
+  const name = 'nox-hyprland-x86_64-linux.iso';
+  current.assets = current.assets.filter((asset) => asset.name !== name);
+  current.assets.push(...[`${name}.parts.json`, `${name}.part-000`].map((name) => ({ name, size: 1 })));
+  await assert.rejects(cleanup({ github, context, core, tag: 'v0.2.0-alpha.5' }));
+  assert.deepEqual(deleted, []);
+});

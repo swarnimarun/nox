@@ -13,6 +13,8 @@
   isoImage = {
     makeEfiBootable = true;
     makeUsbBootable = true;
+    # Level 19 dominates build time; use the upstream fast-compression example.
+    squashfsCompression = "zstd -Xcompression-level 6";
   };
   boot.kernelParams = [ "console=ttyS0" ];
   # The upstream installation profile otherwise boots to a console-only target.

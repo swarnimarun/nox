@@ -37,6 +37,7 @@ jobs:
         with:
           components: rustfmt, clippy
       - run: node --test tests/ci/*.test.cjs
+      - run: python3 -m unittest discover -s tests/ci -p 'test_*.py' -v
       - run: bash -n scripts/build-release.sh
       - run: cargo fmt --all -- --check
       - run: cargo test --workspace --locked

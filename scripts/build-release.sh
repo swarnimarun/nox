@@ -56,6 +56,7 @@ for artifact in hyprland niri wsl container; do
       ;;
   esac
   # The release stays draft until every target and upload passes.
+  python3 scripts/prepare-release-assets.py "$image"
   gh release upload "$RELEASE_TAG" release/*
   rm -rf release result-iso result-wsl result-oci
   docker image rm nox-workspace:dev 2>/dev/null || true
