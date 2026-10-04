@@ -1,6 +1,6 @@
 # Nox implementation handover
 
-Updated: 2026-09-20  
+Updated: 2026-10-05
 Recovery branch: `recovery/niri-wayland-installer`  
 Validated implementation commit: `71c8c0ae9f76174c6e37875f5078fea76fe71cd0`
 
@@ -31,9 +31,11 @@ prerelease publication are the remaining release gates.
 - `noxctl setup`, offline `init`, automatic Nix experimental flags, guarded
   upgrade preview/apply, project-local module registration, and a Git-ready
   Home Manager dotfiles flake scaffold.
-- Serialized CI builds for Hyprland ISO, Niri ISO, and WSL. A full release run
-  deletes stale Actions artifacts and other prereleases, then publishes image,
-  SHA-256, and provenance files under `v0.2.0-alpha.1`.
+- Serialized CI builds for Hyprland ISO, Niri ISO, WSL, and OCI. All targets must
+  validate before publication of a new immutable preview tag. Older Nox previews
+  are removed only after the replacement is complete.
+- One shared Nix build-cache snapshot, capped at 6 GiB, written only by the
+  serialized release job. CI restores it without creating PR cache versions.
 
 ## Verified evidence
 
@@ -77,7 +79,7 @@ UEFI and records the image and boot-log hashes in provenance.
 1. Open and review the recovery pull request.
 2. Merge only while branch CI is green.
 3. Confirm the merge commit's `main` CI succeeds.
-4. Let `Flavour images` build Hyprland, Niri, and WSL serially.
-5. Verify both exact ISO UEFI smoke tests and WSL archive validation.
-6. Confirm the repository has exactly one prerelease,
-   `v0.2.0-alpha.1`, with nine current assets and no stale Actions artifacts.
+4. Let `Flavour images` build Hyprland, Niri, WSL, and OCI serially.
+5. Verify both exact ISO UEFI smoke tests, WSL archive validation, and OCI runtime checks.
+6. Confirm the repository has one current Nox preview release with 14 assets
+   and at most one `nox-build-*` cache snapshot.

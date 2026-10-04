@@ -75,7 +75,11 @@ architecture, and validation performed by CI.
 
 The release workflow builds heavyweight artifacts serially. Its ISO gate boots
 the exact image with UEFI and waits for NetworkManager, greetd, the selected
-compositor, and the GTK installer process.
+compositor, and the GTK installer process. All four targets must pass before
+the draft release is published; older preview images are removed afterward.
+CI reuses one shared Nix cache, capped at 6 GiB, and prunes previous cache
+versions after replacement. See the [testing guide](docs/operations/testing.md)
+for release and cache retention details.
 
 ## Plan and evidence
 

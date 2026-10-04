@@ -6,7 +6,7 @@ on:
       - main
       - "recovery/**"
     paths:
-      - ".github/workflows/**"
+      - ".github/**"
       - "Cargo.lock"
       - "Cargo.toml"
       - "crates/**"
@@ -36,6 +36,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - run: node --test tests/ci/*.test.cjs
+      - run: bash -n scripts/build-release.sh
       - run: cargo fmt --all -- --check
       - run: cargo test --workspace --locked
       - run: cargo build -p noxctl --locked
@@ -51,6 +53,12 @@ jobs:
         with:
           extra_nix_config: |
             experimental-features = nix-command flakes
+      - name: Restore shared build cache (read only)
+        uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nox-build-v1-read-only
+          restore-prefixes-first-match: nox-build-v1-
+          save: false
       - uses: dtolnay/rust-toolchain@stable
       - name: Check Nix formatting
         run: |
@@ -82,6 +90,12 @@ jobs:
         with:
           extra_nix_config: |
             experimental-features = nix-command flakes
+      - name: Restore shared build cache (read only)
+        uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nox-build-v1-read-only
+          restore-prefixes-first-match: nox-build-v1-
+          save: false
       - name: Build and boot-test the exact Hyprland ISO
         id: hyprland
         continue-on-error: true

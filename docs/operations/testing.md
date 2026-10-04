@@ -23,10 +23,13 @@ Podman. CI also creates a real generated Niri/qcow2 project, attaches the
 generated Home Manager dotfiles flake, locks it, evaluates its toplevel and
 Home Manager user, and runs the non-mutating upgrade preview.
 
-The release workflow is the exact-image gate. It starts after successful
-`main` CI, removes stale Actions artifacts, and builds Hyprland, Niri, WSL, and OCI
-container artifacts serially. Each ISO boots with QEMU/TCG and UEFI; its marker is emitted only after
-NetworkManager, greetd, the expected compositor, and `nox-installer` run.
+The release workflow is the exact-image gate. It starts only after successful
+push CI on `main`, or a manual dispatch on `main`. It pins the tested source
+commit and checks the installer's GTK imports before building Hyprland, Niri,
+WSL, and OCI serially in one runner. Each ISO boots with QEMU (KVM when available,
+TCG otherwise) and UEFI; its marker requires NetworkManager, greetd, the selected
+compositor, and `nox-installer` to run. PR CI also boot-tests Hyprland and validates
+WSL, but cannot publish images or write caches.
 
 ## Target release evidence
 
@@ -41,10 +44,40 @@ NetworkManager, greetd, the expected compositor, and `nox-installer` run.
 
 Record commit SHA, flake.lock, Cargo.lock, architecture, image SHA256, command,
 exit status and console logs. A failed or skipped test never counts as support.
-The workflow may also be dispatched for `all`, one compositor, WSL, or the container. A full
-run deletes other prereleases and publishes image, SHA-256, and provenance files
-to `v0.2.0-alpha.1`. The OCI image is loaded and run with Docker in a network-isolated container without host mounts. Heavyweight jobs use `max-parallel: 1`. WSL packaging runs
-as root in CI; Windows WSL2 launch validation remains external.
+A manual dispatch rebuilds the full set. Assets upload to a new draft release,
+`v0.2.0-alpha.<run-number>-<attempt>`, pinned to the source SHA. Only after all four
+targets pass does CI publish it, then delete older Nox `v0.2.0-alpha.*` preview
+releases and stale `nox-*` Actions artifacts. Stable releases and unrelated
+prereleases/artifacts are preserved. A failed build removes its draft and keeps
+the previous published images. Tags are never moved. The release includes four
+images, their checksums and provenance, and both ISO console logs (14 assets).
+OCI is loaded and exercised with Docker without network or host mounts. WSL
+packaging runs as root; Windows WSL2 runtime validation remains external.
+
+## Build cache retention
+
+CI restores one shared Nix cache without saving. The image job is the only
+writer, serialized across runs. Its unique `nox-build-v1-*` key refreshes the
+snapshot each successful build; fallback restoration reuses the previous
+snapshot even when locks or source change. Nix's content-addressed store decides
+which derivations can be reused. Images and local result roots are removed after
+upload, before cache saving. Garbage collection targets a store below 6 GiB and
+an explicit total `/nix` size check skips saving if rooted paths exceed the 6 GiB
+limit. Cache storage is a performance optimization and is not release evidence.
+
+After the save finishes, a separate job retains only the newest `nox-build-*`
+cache across every ref and cache version. Replacement can briefly overlap the
+previous snapshot; steady state is one cache, at most 6 GiB before compression.
+If a build or upload fails, the prior cache remains. Other cache namespaces are
+untouched. No Actions image artifacts are staged, so there is no duplicate image
+archive retention cost.
+
+Validate cleanup boundaries locally with:
+
+```sh
+node --test tests/ci/*.test.cjs
+bash -n scripts/build-release.sh
+```
 
 ## Before enabling apply or rollback
 
